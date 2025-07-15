@@ -1,35 +1,46 @@
 # -*- coding: utf-8 -*-
-import string
-import re
+from string import ascii_uppercase
+
 from scrapy.spiders import CrawlSpider, Rule
 from scrapy.linkextractors import LinkExtractor
-from scrapy import Request
-from doppelganger.items import Actress
-from scrapy.shell import inspect_response
 
+from doppelganger.items import Actress
 
 class BestpornstardbSpider(CrawlSpider):
     name = "bestpornstardb"
     allowed_domains = ["bestpornstardb.com"]
 
-    #start_urls = ['http://www.bestpornstardb.com/stars/A']
-    start_urls = []
-    base_path = 'http://www.bestpornstardb.com/stars/'
-    for letter in string.uppercase:
-        start_urls.append(base_path + letter)
+    # 1) Använd HTTPS utan "www", och indexera med VERSALA bokstäver
+    start_urls = [
+        f"https://bestpornstardb.com/stars/{letter}"
+        for letter in ascii_uppercase
+    ]
 
     rules = (
-        Rule(LinkExtractor(restrict_xpaths="//div[@class='float2']/a"), callback='parse_actress_response', follow=True),
+        # 2) Följ just index-sidorna /stars/A, /stars/B osv.
+        Rule(
+            LinkExtractor(allow=r"/stars/[A-Z]$"),
+            follow=True
+        ),
+        # 3) Extrahera sedan alla profilsidor /stars/<slug>
+        Rule(
+            LinkExtractor(allow=r"/stars/[A-Za-z0-9\-_]+$"),
+            callback="parse_actress_response"
+        ),
     )
 
     def parse_actress_response(self, response):
-
-        actress_name = response.request.url.rsplit('/')[-2]
+        """Bygger ett Actress-item per profilsida."""
+        # Namnet i URL: https://bestpornstardb.com/stars/jane-doe →
+        # 'jane-doe'
+        actress_name = response.url.rstrip("/").rsplit("/", 1)[-1]
 
         item = Actress()
-        item['name'] = actress_name
+        item["name"] = actress_name
 
-        image_urls = response.xpath('//img[@class="t"]/@src').extract()
-        item['image_urls'] = image_urls
+        # Alla thumb-bilder ligger i <img class="t">
+        raws = response.xpath('//img[@class="t"]/@src').getall()
+        # Gör relativ → absolut
+        item["image_urls"] = [response.urljoin(u) for u in raws]
 
-        return item
+        yield item

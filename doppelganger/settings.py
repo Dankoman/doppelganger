@@ -39,6 +39,18 @@ CONCURRENT_REQUESTS = 32
 # Disable Telnet Console (enabled by default)
 #TELNETCONSOLE_ENABLED = False
 
+MEDIA_ALLOW_REDIRECTS = True
+
+# Aktivera CloseSpider-extensionen
+#EXTENSIONS = {
+#    'scrapy.extensions.closespider.CloseSpider': 500,
+#}
+
+# Begränsa till 100 items per körning
+#CLOSESPIDER_ITEMCOUNT = 100
+# Aktivera paus/återuppta via jobb-katalog
+JOBDIR = 'crawls/googleimages-1'
+
 # Override the default request headers:
 #DEFAULT_REQUEST_HEADERS = {
 #   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -73,7 +85,7 @@ ITEM_PIPELINES = {
 #IMAGES_STORE = '/home/arodriguez/tsp/projects/personal/doppelganger/bestpornstartdb'
 #IMAGES_STORE = '/home/arodriguez/tsp/projects/personal/doppelganger/images/google_images'
 #<IMAGES_STORE = '/home/arodriguez/tsp/projects/personal/doppelganger/images/definebabe'
-IMAGES_STORE = '/home/arodriguez/tsp/projects/personal/doppelganger/images/definebabe/main'
+IMAGES_STORE = '/home/marqs/Bilder/pr0n'
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See http://doc.scrapy.org/en/latest/topics/autothrottle.html

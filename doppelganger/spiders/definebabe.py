@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 import string
 import re
-import urlparse
+#import urlparse
 from scrapy.spiders import CrawlSpider, Rule
 from scrapy.linkextractors import LinkExtractor
 from scrapy import Request
 from doppelganger.items import Actress
 from scrapy.shell import inspect_response
+from urllib.parse import urlparse
 
 
 class DefinebabeSpider(CrawlSpider):
@@ -16,7 +17,7 @@ class DefinebabeSpider(CrawlSpider):
     #start_urls = ['http://www.definebabe.com/models/h/']
     start_urls = []
     base_path = 'http://www.definebabe.com/models/'
-    for letter in string.lowercase:
+    for letter in string.ascii_lowercase:
         start_urls.append(base_path + letter)
 
     rules = (

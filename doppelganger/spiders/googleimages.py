@@ -1,44 +1,58 @@
+# doppelganger/spiders/googleimages.py
 # -*- coding: utf-8 -*-
-import string
-import re
 import os
-import json
-from scrapy.spiders import CrawlSpider, Rule
-from scrapy.linkextractors import LinkExtractor
-from scrapy import Request
+import urllib.parse
+import scrapy
 from doppelganger.items import Actress
-from scrapy.shell import inspect_response
 
-
-class GoogleImagesSpider(CrawlSpider):
-
+class GoogleImagesSpider(scrapy.Spider):
     name = "googleimages"
-    allowed_domains = ["google.com"]
+    allowed_domains = ["www.googleapis.com", "googleusercontent.com", "reddit.it", "m.media-amazon.com", "upload.wikimedia.org"]
+    name = "googleimages"
+    allowed_domains = ["www.googleapis.com"]
+    custom_settings = {
+        'EXTENSIONS': {'scrapy.extensions.closespider.CloseSpider': 500},
+        'CLOSESPIDER_ITEMCOUNT': 100,
+        'JOBDIR': 'crawls/googleimages-1',
+    }
 
-    start_urls = []
-    #for directory_name in os.listdir("./images/bestpornstartdb/full/"):
-    #for directory_name in os.listdir("./images/test/full/"):
-        #actress_name = directory_name.replace('_', ' ')
-        # google_url = 'https://www.google.com/search?q=' + actress_name + ' porn' + '&biw=1536&bih=776&tbm=isch&tbs=isz:m,itp:face&tbm=isch'
-        #google_url = 'https://www.google.com/search?q=' + actress_name + ' porn' + '&biw=1536&bih=776&tbm=isch&tbs=isz:m&tbm=isch' # not faces
-        #start_urls.append(google_url)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.api_key   = os.getenv("GOOGLE_API_KEY")
+        self.cx        = os.getenv("GOOGLE_CX")
+        self.source_dir = "/home/marqs/Bilder/pr0n/full"
 
-    #start_urls = ['file:///home/arodriguez/tsp/projects/personal/doppelganger/tmp8n_6z1.html']
+    def start_requests(self):
+        base_url = "https://www.googleapis.com/customsearch/v1"
+        for dirname in os.listdir(self.source_dir):
+            dirpath = os.path.join(self.source_dir, dirname)
+            if not os.path.isdir(dirpath):
+                continue
+            query = dirname.replace("_", " ")
+            # Bygg URL med GET-parametrar enligt API-spec
+            params = {
+                "key":        self.api_key,
+                "cx":         self.cx,
+                "q":          query,
+                "searchType": "image",
+                "num":        "10",
+            }
+            url = base_url + "?" + urllib.parse.urlencode(params)
+            yield scrapy.Request(
+                url,
+                callback=self.parse,
+                meta={"dir_name": dirname},
+                dont_filter=True
+            )
 
     def parse(self, response):
-
+        """
+        Parsar JSON-svaret från Google Custom Search.
+        """
+        data = response.json()
         item = Actress()
-
-        value_searched = response.xpath('//input[@id="lst-ib"]/@value').extract()[0]
-        actress_name = value_searched.replace('""', '').replace(' ', '_').replace('_porn', '')
-        item['name'] = actress_name
-
-        item['image_urls'] = []
-        actress_info_list = response.xpath('//div[@class="rg_meta"]/text()').extract()
-        for actress_info in actress_info_list[:40]:
-
-            picture_info_dic = json.loads(actress_info)
-
-            item['image_urls'].append(picture_info_dic['tu'])
-
-        return item
+        item["name"] = response.meta["dir_name"]
+        # Extrahera bild-URL:er från "items" → "link"
+        urls = [hit.get("link") for hit in data.get("items", []) if hit.get("link")]
+        item["image_urls"] = urls
+        yield item
