@@ -4,7 +4,7 @@
 #
 # See documentation in:
 # http://doc.scrapy.org/en/latest/topics/items.html
-
+import scrapy
 from scrapy.item import Item, Field
 
 
@@ -17,3 +17,8 @@ class Actress(Item):
     name = Field()
     image_urls = Field()
     images = Field()
+
+class PerformerThumb(scrapy.Item):
+    performer   = Field()
+    image_urls  = Field()      # obligatoriskt namn för ImagesPipeline
+    images      = Field()      # här lagrar pipelinen meta om nedladdningen

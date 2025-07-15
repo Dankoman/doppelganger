@@ -28,9 +28,9 @@ CONCURRENT_REQUESTS = 32
 # Configure a delay for requests for the same website (default: 0)
 # See http://scrapy.readthedocs.org/en/latest/topics/settings.html#download-delay
 # See also autothrottle settings and docs
-#DOWNLOAD_DELAY = 0.3
+DOWNLOAD_DELAY = 0.5
 # The download delay setting will honor only one of:
-#CONCURRENT_REQUESTS_PER_DOMAIN = 16
+CONCURRENT_REQUESTS_PER_DOMAIN = 16
 #CONCURRENT_REQUESTS_PER_IP = 16
 
 # Disable cookies (enabled by default)
@@ -40,6 +40,7 @@ CONCURRENT_REQUESTS = 32
 #TELNETCONSOLE_ENABLED = False
 
 MEDIA_ALLOW_REDIRECTS = True
+
 
 # Aktivera CloseSpider-extensionen
 #EXTENSIONS = {
@@ -78,7 +79,7 @@ JOBDIR = 'crawls/googleimages-1'
 # Configure item pipelines
 # See http://scrapy.readthedocs.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
-    'doppelganger.pipelines.DoppelgangerPipeline': 1,
+    "doppelganger.pipelines.PerformerImagePipeline": 1,
 }
 
 #IMAGES_STORE = '/home/arodriguez/tsp/projects/personal/doppelganger/images/adultfimdatabase'

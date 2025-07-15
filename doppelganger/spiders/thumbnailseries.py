@@ -1,33 +1,31 @@
-# -*- coding: utf-8 -*-
 import scrapy
-from scrapy.linkextractors import LinkExtractor
-from scrapy.spiders import CrawlSpider, Rule
-from doppelganger.items import Actress
+from urllib.parse import urljoin
+from ..items import PerformerThumb
 
-class ThumbnailSeriesSpider(CrawlSpider):
+
+class ThumbnailSeriesSpider(scrapy.Spider):
     name = "thumbnailseries"
     allowed_domains = ["thumbnailseries.com"]
     start_urls = ["https://www.thumbnailseries.com/pornstars/"]
 
-    rules = (
-        # Följ länkar till varje profilsida under /pornstars/<namn>/
-        Rule(
-            LinkExtractor(allow=r"/pornstars/[a-z0-9\-]+/?$"),
-            callback="parse_profile",
-            follow=True
-        ),
-    )
+    custom_settings = {                       # aktivera pipelinen endast för denna spindel
+        "ITEM_PIPELINES": {
+            "doppelganger.pipelines.PerformerImagePipeline": 1,
+        }
+    }
 
-    def parse_profile(self, response):
-        # 1) Namnet på stjärnan
-        name = response.css('h1.entry-title::text').get(default='').strip()
+    def parse(self, response):
+        # 1) Hitta alla performer-länkar på list­nings­sidan
+        for a in response.css("main.archives a[href*='/pornstars/']"):
+            url = a.attrib["href"]
+            yield response.follow(url, self.parse_performer)
 
-        # 2) Alla img-taggar i huvudtexten (kan justeras om site-strukturen ändras)
-        image_urls = response.css('.entry-content img::attr(src)').getall()
-
-        # 3) Skapa och yield:a item som ImagesPipeline kan hantera
-        item = Actress()
-        item['name'] = name
-        item['image_urls'] = image_urls
-        item['profile_url'] = response.url
-        yield item
+    def parse_performer(self, response):
+        name = response.css("header h1::text").get().strip()
+        # 2) Plocka ut samtliga thumbnail-URL:er (relativa → absolut via urljoin)
+        thumbs = [
+            urljoin(response.url, img.attrib["src"])
+            for img in response.css("div.picture-gallery img[src]")
+        ]
+        if thumbs:
+            yield PerformerThumb(performer=name, image_urls=thumbs)
