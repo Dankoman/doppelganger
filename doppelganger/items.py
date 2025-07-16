@@ -22,3 +22,8 @@ class PerformerThumb(scrapy.Item):
     performer   = Field()
     image_urls  = Field()      # obligatoriskt namn för ImagesPipeline
     images      = Field()      # här lagrar pipelinen meta om nedladdningen
+
+class EgafdGalleryItem(scrapy.Item):
+    performer   = Field()
+    image_urls  = Field()   # krävs av ImagesPipeline
+    images      = Field()
