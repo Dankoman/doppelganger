@@ -2,3 +2,7 @@ images/*
 .idea/
 .venv/*
 face_extractor/.venv/*
+face_extractor/arcface_work/embeddings.pkl
+*.pkl*
+face_extractor/arcface_work/processed.jsonl
+face_extractor/arcface_work/embeddings.pkl
