@@ -4,71 +4,76 @@ import face_recognition
 
 # Basinställningar
 root_dir = "/home/marqs/Bilder/pr0n"
-checkpoint_file = os.path.join(root_dir, ".processed_faces.txt")
+output_dir = os.path.join(root_dir, "Faces")
+checkpoint_file = os.path.join(root_dir, "processed_faces.txt")
 valid_extensions = ('.jpg', '.jpeg', '.png', '.bmp')
 MIN_WIDTH = 150
 MIN_HEIGHT = 150
 
 # Läs tidigare bearbetade filer från checkpoint
 def load_checkpoint():
-    if not os.path.exists(checkpoint_file):
+    if not os.path.isfile(checkpoint_file):
         return set()
     with open(checkpoint_file, 'r', encoding='utf-8') as f:
         return set(line.strip() for line in f)
 
-# Lägg till fil i checkpoint
-def append_checkpoint(entry):
-    with open(checkpoint_file, 'a', encoding='utf-8') as f:
-        f.write(entry + "\n")
+# Spara uppdaterad checkpoint
+def save_checkpoint(processed):
+    with open(checkpoint_file, 'w', encoding='utf-8') as f:
+        for path in processed:
+            f.write(path + '\n')
 
-# Hitta bilder som inte redan behandlats
-def find_all_images(root_folder, processed_set):
-    file_list = []
-    for dirpath, _, filenames in os.walk(root_folder):
+# Gå igenom alla bildfiler under root_dir
+def find_image_files():
+    for dirpath, _, filenames in os.walk(root_dir):
         for filename in filenames:
             if filename.lower().endswith(valid_extensions):
-                full_path = os.path.join(dirpath, filename)
-                if full_path not in processed_set:
-                    file_list.append(full_path)
-    return file_list
+                yield os.path.join(dirpath, filename)
 
-# Bearbeta en bild
-def process_image(file_path):
+# Extrahera ansikten och spara dem
+def extract_and_save_faces(image_path):
     try:
-        image = face_recognition.load_image_file(file_path)
+        rel_dir = os.path.relpath(os.path.dirname(image_path), root_dir)
+        person_dir = os.path.join(output_dir, rel_dir)
+        os.makedirs(person_dir, exist_ok=True)
 
-        height, width = image.shape[:2]
-        if width < MIN_WIDTH or height < MIN_HEIGHT:
-            return f"⏭️ {file_path}: Bilden är för liten ({width}x{height})", False
+        image = cv2.imread(image_path)
+        if image is None:
+            return False
 
-        face_locations = face_recognition.face_locations(image)
-        if len(face_locations) != 1:
-            return f"⏭️ {file_path}: {len(face_locations)} ansikten hittades", False
+        if image.shape[1] < MIN_WIDTH or image.shape[0] < MIN_HEIGHT:
+            return False
 
-        top, right, bottom, left = face_locations[0]
-        face_image = image[top:bottom, left:right]
-        face_image_resized = cv2.resize(face_image, (128, 128))
+        rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        face_locations = face_recognition.face_locations(rgb_image)
 
-        base, _ = os.path.splitext(file_path)
-        save_path = f"{base}_face.jpg"
-        cv2.imwrite(save_path, cv2.cvtColor(face_image_resized, cv2.COLOR_RGB2BGR))
+        for i, (top, right, bottom, left) in enumerate(face_locations):
+            face_image = image[top:bottom, left:right]
+            base_name = os.path.splitext(os.path.basename(image_path))[0]
+            face_filename = f"{base_name}_face{i+1}.jpg"
+            face_path = os.path.join(person_dir, face_filename)
+            cv2.imwrite(face_path, face_image)
 
-        return f"✅ Sparade: {save_path}", True
+        return True
 
     except Exception as e:
-        return f"❌ Fel i {file_path}: {e}", False
+        print(f"Fel vid behandling av {image_path}: {e}")
+        return False
 
-# Huvudfunktion utan trådar
+# Huvudkörning
 def main():
-    processed_set = load_checkpoint()
-    all_images = find_all_images(root_dir, processed_set)
-    print(f"🔍 Hittade {len(all_images)} bilder att bearbeta")
+    processed = load_checkpoint()
+    images = [f for f in find_image_files() if f not in processed]
 
-    for path in all_images:
-        result, success = process_image(path)
-        print(result)
+    print(f"🔍 Hittade {len(images)} bilder att bearbeta")
+
+    for image_path in images:
+        success = extract_and_save_faces(image_path)
         if success:
-            append_checkpoint(path)
+            processed.add(image_path)
+
+    save_checkpoint(processed)
+    print("✅ Klart.")
 
 if __name__ == "__main__":
     main()
