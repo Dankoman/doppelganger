@@ -1,3 +1,4 @@
 images/*
 .idea/
-venv/*
+.venv/*
+face_extractor/.venv/*
