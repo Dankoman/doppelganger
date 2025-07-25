@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  doppelganger-scraper:
+    build: .
+    container_name: doppelganger-scraper
+    volumes:
+      # Mappa bildkatalog till host för att bevara nedladdade bilder
+      - ./images:/app/images
+      # Mappa crawl-data för att bevara scraping-progress
+      - ./crawls:/app/crawls
+      # Mappa logs (valfritt)
+      - ./logs:/app/logs
+    environment:
+      # Scrapy-inställningar som kan överskrivas
+      - DOWNLOAD_DELAY=3.0
+      - CONCURRENT_REQUESTS=2
+      - CONCURRENT_REQUESTS_PER_DOMAIN=1
+      - ANTIBLOCK_ENABLED=true
+    restart: unless-stopped
+    # Begränsa resurser för att vara snäll mot systemet
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+    # Kör med begränsad användare för säkerhet
+    user: "1000:1000"
+    
+  # Valfri service för att övervaka scraper-status
+  scraper-monitor:
+    image: nginx:alpine
+    container_name: scraper-monitor
+    ports:
+      - "8080:80"
+    volumes:
+      - ./images:/usr/share/nginx/html/images:ro
+      - ./logs:/usr/share/nginx/html/logs:ro
+    depends_on:
+      - doppelganger-scraper
+    profiles:
+      - monitoring
+
