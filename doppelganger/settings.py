@@ -1,114 +1,139 @@
 # -*- coding: utf-8 -*-
 
-# Scrapy settings for doppelganger project
-#
-# For simplicity, this file contains only settings considered important or
-# commonly used. You can find more settings consulting the documentation:
-#
-#     http://doc.scrapy.org/en/latest/topics/settings.html
-#     http://scrapy.readthedocs.org/en/latest/topics/downloader-middleware.html
-#     http://scrapy.readthedocs.org/en/latest/topics/spider-middleware.html
+# Enhanced Scrapy settings for doppelganger project with advanced anti-blocking
 
 BOT_NAME = 'doppelganger'
 
 SPIDER_MODULES = ['doppelganger.spiders']
 NEWSPIDER_MODULE = 'doppelganger.spiders'
 
-
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
-#USER_AGENT = 'doppelganger (+http://www.yourdomain.com)'
-USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
+USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 
-# Obey robots.txt rules
-#ROBOTSTXT_OBEY = True
+# Obey robots.txt rules (disabled for scraping)
+ROBOTSTXT_OBEY = False
 
-# Configure maximum concurrent requests performed by Scrapy (default: 16)
-CONCURRENT_REQUESTS =16
+# Configure maximum concurrent requests performed by Scrapy (very conservative)
+CONCURRENT_REQUESTS = 1
 
-# Configure a delay for requests for the same website (default: 0)
-# See http://scrapy.readthedocs.org/en/latest/topics/settings.html#download-delay
-# See also autothrottle settings and docs
-DOWNLOAD_DELAY = 0.5
+# Configure a delay for requests for the same website
+DOWNLOAD_DELAY = 5.0  # Ökat till 5 sekunder
+RANDOMIZE_DOWNLOAD_DELAY = 0.5  # Randomisera ±50%
+
 # The download delay setting will honor only one of:
-CONCURRENT_REQUESTS_PER_DOMAIN = 4
-#CONCURRENT_REQUESTS_PER_IP = 16
+CONCURRENT_REQUESTS_PER_DOMAIN = 1
+CONCURRENT_REQUESTS_PER_IP = 1
 
-# Disable cookies (enabled by default)
-#COOKIES_ENABLED = False
+# Disable cookies (enabled by default) - vi hanterar detta manuellt
+COOKIES_ENABLED = True
 
 # Disable Telnet Console (enabled by default)
-#TELNETCONSOLE_ENABLED = False
+TELNETCONSOLE_ENABLED = False
 
 MEDIA_ALLOW_REDIRECTS = True
 
-
-# Aktivera CloseSpider-extensionen
-#EXTENSIONS = {
-#    'scrapy.extensions.closespider.CloseSpider': 500,
-#}
-
-# Begränsa till 100 items per körning
-#CLOSESPIDER_ITEMCOUNT = 100
-# Aktivera paus/återuppta via jobb-katalog
+# Aktivera jobb-katalog för återupptagning
 JOBDIR = 'crawls/book-3'
 
-# Override the default request headers:
+# Override the default request headers med mer realistiska värden
 DEFAULT_REQUEST_HEADERS = {
-    "User-Agent": "...Chrome/126.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Referer": "https://www.mypornstarbook.net/",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9,sv-SE;q=0.8,sv;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br",
+    "DNT": "1",
+    "Connection": "keep-alive",
     "Upgrade-Insecure-Requests": "1",
     "Sec-Fetch-Dest": "document",
     "Sec-Fetch-Mode": "navigate",
     "Sec-Fetch-Site": "none",
     "Sec-Fetch-User": "?1",
+    "Cache-Control": "max-age=0",
+    "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
 }
 
 # Enable or disable spider middlewares
-# See http://scrapy.readthedocs.org/en/latest/topics/spider-middleware.html
-#SPIDER_MIDDLEWARES = {
-#    'doppelganger.middlewares.DoppelgangerSpiderMiddleware': 543,
-#}
+SPIDER_MIDDLEWARES = {
+    'doppelganger.middlewares.DoppelgangerSpiderMiddleware': 543,
+}
 
-# Enable or disable downloader middlewares
-# See http://scrapy.readthedocs.org/en/latest/topics/downloader-middleware.html
-#DOWNLOADER_MIDDLEWARES = {
-#    'doppelganger.middlewares.MyCustomDownloaderMiddleware': 543,
-#}
+# Enable or disable downloader middlewares med förbättrade klasser
+DOWNLOADER_MIDDLEWARES = {
+    'doppelganger.middlewares.EnhancedUserAgentMiddleware': 400,
+    'doppelganger.middlewares.AdvancedAntiBlockingMiddleware': 543,
+    'doppelganger.middlewares.EnhancedRetryMiddleware': 550,
+}
+
+# Anti-blocking inställningar (förbättrade)
+ANTIBLOCK_ENABLED = True
+ANTIBLOCK_DELAY_RANGE = (3, 10)  # Längre fördröjningar
+
+# Retry-inställningar
+RETRY_ENABLED = True
+RETRY_TIMES = 5  # Fler försök
+RETRY_HTTP_CODES = [500, 502, 503, 504, 408, 429, 403]  # Inkludera 403
+RETRY_PRIORITY_ADJUST = -1
+
+# Download timeout
+DOWNLOAD_TIMEOUT = 30
 
 # Enable or disable extensions
-# See http://scrapy.readthedocs.org/en/latest/topics/extensions.html
-#EXTENSIONS = {
-#    'scrapy.extensions.telnet.TelnetConsole': None,
-#}
+EXTENSIONS = {
+    'scrapy.extensions.telnet.TelnetConsole': None,
+}
 
 # Configure item pipelines
-# See http://scrapy.readthedocs.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
     "doppelganger.pipelines.PerformerImagePipeline": 1,
 }
 
+IMAGES_STORE = '/app/images'
 
-IMAGES_STORE = '/home/marqs/Bilder/pBook'
-
-# Enable and configure the AutoThrottle extension (disabled by default)
-# See http://doc.scrapy.org/en/latest/topics/autothrottle.html
+# Enable and configure the AutoThrottle extension (mycket konservativt)
 AUTOTHROTTLE_ENABLED = True
-# The initial download delay
-AUTOTHROTTLE_START_DELAY = 5
-# The maximum download delay to be set in case of high latencies
-AUTOTHROTTLE_MAX_DELAY = 60
-# The average number of requests Scrapy should be sending in parallel to
-# each remote server
-AUTOTHROTTLE_TARGET_CONCURRENCY = 1.0
-# Enable showing throttling stats for every response received:
-#AUTOTHROTTLE_DEBUG = False
+AUTOTHROTTLE_START_DELAY = 5  # Starta med 5 sekunder
+AUTOTHROTTLE_MAX_DELAY = 60   # Max 60 sekunder
+AUTOTHROTTLE_TARGET_CONCURRENCY = 0.5  # Mycket låg concurrency
+AUTOTHROTTLE_DEBUG = True  # Visa throttling-statistik
 
-# Enable and configure HTTP caching (disabled by default)
-# See http://scrapy.readthedocs.org/en/latest/topics/downloader-middleware.html#httpcache-middleware-settings
-#HTTPCACHE_ENABLED = True
-#HTTPCACHE_EXPIRATION_SECS = 0
-#HTTPCACHE_DIR = 'httpcache'
-#HTTPCACHE_IGNORE_HTTP_CODES = []
-#HTTPCACHE_STORAGE = 'scrapy.extensions.httpcache.FilesystemCacheStorage'
+# Enable and configure HTTP caching (för att minska requests)
+HTTPCACHE_ENABLED = True
+HTTPCACHE_EXPIRATION_SECS = 3600  # Cache i 1 timme
+HTTPCACHE_DIR = 'httpcache'
+HTTPCACHE_IGNORE_HTTP_CODES = [403, 404, 500, 503]
+
+# Logging
+LOG_LEVEL = 'INFO'
+
+# Request fingerprinting (för att undvika duplicates)
+DUPEFILTER_DEBUG = True
+
+# Memory usage extension
+MEMUSAGE_ENABLED = True
+MEMUSAGE_LIMIT_MB = 2048
+MEMUSAGE_WARNING_MB = 1024
+
+# Close spider on various conditions
+CLOSESPIDER_TIMEOUT = 3600  # Stäng efter 1 timme
+CLOSESPIDER_ITEMCOUNT = 1000  # Eller efter 1000 items
+CLOSESPIDER_PAGECOUNT = 500   # Eller efter 500 sidor
+CLOSESPIDER_ERRORCOUNT = 50   # Eller efter 50 fel
+
+# DNS timeout
+DNSCACHE_ENABLED = True
+DNSCACHE_SIZE = 10000
+DNS_TIMEOUT = 60
+
+# Reactor settings
+REACTOR_THREADPOOL_MAXSIZE = 20
+
+# Ajaxcrawl settings (för JavaScript-heavy sites)
+AJAXCRAWL_ENABLED = False
+
+# Compression
+COMPRESSION_ENABLED = True
+
+# Stats
+STATS_CLASS = 'scrapy.statscollectors.MemoryStatsCollector'
+
