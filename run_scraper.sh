@@ -24,6 +24,110 @@ show_banner() {
     echo -e "${NC}"
 }
 
+# Kontrollera att Docker körs
+check_docker() {
+    if ! docker info >/dev/null 2>&1; then
+        echo -e "${RED}❌ Docker körs inte. Starta Docker först.${NC}"
+        exit 1
+    fi
+}
+
+# Skapa nödvändiga kataloger
+ensure_directories() {
+    mkdir -p images crawls logs httpcache
+    chmod 755 images crawls logs httpcache
+}
+
+# URL-baserade scraper-funktioner
+url_test() {
+    show_banner
+    echo -e "${YELLOW}🧪 Testar URL-baserad scraper med 5 profiler...${NC}"
+    check_docker
+    ensure_directories
+    
+    # Kontrollera att URL-filen finns
+    if [ ! -f "profile_urls.txt" ]; then
+        echo -e "${RED}❌ profile_urls.txt saknas. Kopiera filen från HTML-extraktionen.${NC}"
+        exit 1
+    fi
+    
+    echo -e "${CYAN}📊 Antal URL:er i fil: $(wc -l < profile_urls.txt)${NC}"
+    
+    # Kör test med URL-baserad spider
+    docker-compose run --rm doppelganger-scraper scrapy crawl mpb_from_urls \
+        -s CLOSESPIDER_ITEMCOUNT=5 \
+        -s LOG_LEVEL=INFO
+}
+
+url_run() {
+    show_banner
+    echo -e "${YELLOW}🚀 Kör URL-baserad scraper för alla profiler...${NC}"
+    check_docker
+    ensure_directories
+    
+    # Kontrollera att URL-filen finns
+    if [ ! -f "profile_urls.txt" ]; then
+        echo -e "${RED}❌ profile_urls.txt saknas. Kopiera filen från HTML-extraktionen.${NC}"
+        exit 1
+    fi
+    
+    echo -e "${CYAN}📊 Antal URL:er att scrapa: $(wc -l < profile_urls.txt)${NC}"
+    echo -e "${YELLOW}⚠️  Detta kommer att scrapa ALLA profiler. Fortsätt? (y/N):${NC}"
+    read -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        # Kör full URL-baserad scraping
+        docker-compose run --rm doppelganger-scraper scrapy crawl mpb_from_urls \
+            -s LOG_LEVEL=INFO
+    else
+        echo -e "${CYAN}ℹ️  Scraping avbruten${NC}"
+    fi
+}
+
+url_sample() {
+    show_banner
+    echo -e "${YELLOW}📊 Kör URL-baserad scraper för 100 profiler...${NC}"
+    check_docker
+    ensure_directories
+    
+    # Kontrollera att URL-filen finns
+    if [ ! -f "profile_urls.txt" ]; then
+        echo -e "${RED}❌ profile_urls.txt saknas. Kopiera filen från HTML-extraktionen.${NC}"
+        exit 1
+    fi
+    
+    echo -e "${CYAN}📊 Antal URL:er i fil: $(wc -l < profile_urls.txt)${NC}"
+    
+    # Kör sample med URL-baserad spider
+    docker-compose run --rm doppelganger-scraper scrapy crawl mpb_from_urls \
+        -s CLOSESPIDER_ITEMCOUNT=100 \
+        -s LOG_LEVEL=INFO
+}
+
+url_debug() {
+    show_banner
+    echo -e "${YELLOW}🐛 Debug URL-baserad scraper...${NC}"
+    check_docker
+    ensure_directories
+    
+    # Kontrollera att URL-filen finns
+    if [ ! -f "profile_urls.txt" ]; then
+        echo -e "${RED}❌ profile_urls.txt saknas. Kopiera filen från HTML-extraktionen.${NC}"
+        exit 1
+    fi
+    
+    echo -e "${CYAN}📊 Första 5 URL:er:${NC}"
+    head -5 profile_urls.txt
+    echo ""
+    
+    # Kör debug med URL-baserad spider
+    docker-compose run --rm doppelganger-scraper scrapy crawl mpb_from_urls \
+        -L DEBUG \
+        -s CLOSESPIDER_ITEMCOUNT=1 \
+        -s DOWNLOAD_DELAY=10 \
+        -s CONCURRENT_REQUESTS=1
+}
+
 # Hjälpfunktioner
 show_help() {
     show_banner
@@ -52,7 +156,8 @@ show_help() {
     echo ""
     echo -e "${YELLOW}Exempel:${NC}"
     echo -e "  $0 build && $0 test     ${PURPLE}# Bygg och testa${NC}"
-    echo -e "  $0 run                  ${PURPLE}# Kör full scraping${NC}"
+    echo -e "  $0 url_test             ${PURPLE}# Testa URL-scraper${NC}"
+    echo -e "  $0 url_sample           ${PURPLE}# Scrapa 100 profiler${NC}"
     echo -e "  $0 logs                 ${PURPLE}# Övervaka framsteg${NC}"
     echo ""
     echo -e "${CYAN}Förbättringar i v2.0:${NC}"
@@ -61,22 +166,8 @@ show_help() {
     echo -e "  ✅ Avancerade anti-blocking headers"
     echo -e "  ✅ Adaptiv fördröjning vid 403-fel"
     echo -e "  ✅ Exponential backoff retry-logik"
-    echo -e "  ✅ Förbättrad Docker-integration"
+    echo -e "  ✅ URL-baserad scraping (kringgår blockering)"
     echo ""
-}
-
-# Kontrollera att Docker körs
-check_docker() {
-    if ! docker info >/dev/null 2>&1; then
-        echo -e "${RED}❌ Docker körs inte. Starta Docker först.${NC}"
-        exit 1
-    fi
-}
-
-# Skapa nödvändiga kataloger
-ensure_directories() {
-    mkdir -p images crawls logs httpcache
-    chmod 755 images crawls logs httpcache
 }
 
 # Huvudfunktioner
@@ -91,7 +182,7 @@ case "${1:-help}" in
         docker-compose build --no-cache
         
         echo -e "${GREEN}✅ Docker-imagen byggd framgångsrikt!${NC}"
-        echo -e "${CYAN}💡 Testa nu med: $0 test${NC}"
+        echo -e "${CYAN}💡 Testa nu med: $0 test eller $0 url_test${NC}"
         ;;
         
     "test")
@@ -268,95 +359,3 @@ print(f'   Retry times: {settings.get(\"RETRY_TIMES\")}')
         show_help
         ;;
 esac
-
-
-# URL-baserade scraper-funktioner
-url_test() {
-    show_banner
-    echo -e "${YELLOW}🧪 Testar URL-baserad scraper med 5 profiler...${NC}"
-    check_docker
-    ensure_directories
-    
-    # Kontrollera att URL-filen finns
-    if [ ! -f "profile_urls.txt" ]; then
-        echo -e "${RED}❌ profile_urls.txt saknas. Kopiera filen från HTML-extraktionen.${NC}"
-        exit 1
-    fi
-    
-    echo -e "${CYAN}📊 Antal URL:er i fil: $(wc -l < profile_urls.txt)${NC}"
-    
-    # Kör test med URL-baserad spider
-    docker-compose run --rm doppelganger-scraper scrapy crawl mpb_from_urls \
-        -s CLOSESPIDER_ITEMCOUNT=5 \
-        -s LOG_LEVEL=INFO
-}
-
-url_run() {
-    show_banner
-    echo -e "${YELLOW}🚀 Kör URL-baserad scraper för alla profiler...${NC}"
-    check_docker
-    ensure_directories
-    
-    # Kontrollera att URL-filen finns
-    if [ ! -f "profile_urls.txt" ]; then
-        echo -e "${RED}❌ profile_urls.txt saknas. Kopiera filen från HTML-extraktionen.${NC}"
-        exit 1
-    fi
-    
-    echo -e "${CYAN}📊 Antal URL:er att scrapa: $(wc -l < profile_urls.txt)${NC}"
-    echo -e "${YELLOW}⚠️  Detta kommer att scrapa ALLA profiler. Fortsätt? (y/N):${NC}"
-    read -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        # Kör full URL-baserad scraping
-        docker-compose run --rm doppelganger-scraper scrapy crawl mpb_from_urls \
-            -s LOG_LEVEL=INFO
-    else
-        echo -e "${CYAN}ℹ️  Scraping avbruten${NC}"
-    fi
-}
-
-url_sample() {
-    show_banner
-    echo -e "${YELLOW}📊 Kör URL-baserad scraper för 100 profiler...${NC}"
-    check_docker
-    ensure_directories
-    
-    # Kontrollera att URL-filen finns
-    if [ ! -f "profile_urls.txt" ]; then
-        echo -e "${RED}❌ profile_urls.txt saknas. Kopiera filen från HTML-extraktionen.${NC}"
-        exit 1
-    fi
-    
-    echo -e "${CYAN}📊 Antal URL:er i fil: $(wc -l < profile_urls.txt)${NC}"
-    
-    # Kör sample med URL-baserad spider
-    docker-compose run --rm doppelganger-scraper scrapy crawl mpb_from_urls \
-        -s CLOSESPIDER_ITEMCOUNT=100 \
-        -s LOG_LEVEL=INFO
-}
-
-url_debug() {
-    show_banner
-    echo -e "${YELLOW}🐛 Debug URL-baserad scraper...${NC}"
-    check_docker
-    ensure_directories
-    
-    # Kontrollera att URL-filen finns
-    if [ ! -f "profile_urls.txt" ]; then
-        echo -e "${RED}❌ profile_urls.txt saknas. Kopiera filen från HTML-extraktionen.${NC}"
-        exit 1
-    fi
-    
-    echo -e "${CYAN}📊 Första 5 URL:er:${NC}"
-    head -5 profile_urls.txt
-    echo ""
-    
-    # Kör debug med URL-baserad spider
-    docker-compose run --rm doppelganger-scraper scrapy crawl mpb_from_urls \
-        -L DEBUG \
-        -s CLOSESPIDER_ITEMCOUNT=1 \
-        -s DOWNLOAD_DELAY=10 \
-        -s CONCURRENT_REQUESTS=1
-}
-
