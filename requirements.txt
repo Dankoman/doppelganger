@@ -32,3 +32,9 @@ PySocks>=1.7.1
 chardet>=5.0.0
 charset-normalizer>=3.0.0
 
+
+# Chrome headless integration
+selenium>=4.15.0
+webdriver-manager>=4.0.0
+undetected-chromedriver>=3.5.0
+
