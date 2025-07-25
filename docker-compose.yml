@@ -5,6 +5,7 @@ services:
     volumes:
       # Mappa bildkatalog till host för att bevara nedladdade bilder
       - ./images:/app/images
+      - ./profile_urls.txt:/app/profile_urls.txt:ro
       # Mappa crawl-data för att bevara scraping-progress
       - ./crawls:/app/crawls
       # Mappa logs (valfritt)
