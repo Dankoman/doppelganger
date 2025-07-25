@@ -150,7 +150,7 @@ CHROME_ENABLED = False  # Aktiveras med -s CHROME_ENABLED=True
 # Chrome middleware (aktiveras endast när CHROME_ENABLED=True)
 # Lägg till i DOWNLOADER_MIDDLEWARES när Chrome används
 CHROME_MIDDLEWARE = {
-    'doppelganger.middlewares_chrome.ChromeHeadlessMiddleware': 585,
+    'doppelganger.middlewares_chrome.SuperSimpleChromeMiddleware': 585,
 }
 
 # Chrome-specifika inställningar
@@ -163,3 +163,4 @@ CHROME_DOWNLOAD_DELAY = 8  # Längre delay för Chrome
 CHROME_CONCURRENT_REQUESTS = 1  # En åt gången för Chrome
 CHROME_RETRY_TIMES = 3  # Färre retries eftersom Chrome är mer tillförlitlig
 
+DOWNLOADER_MIDDLEWARES['doppelganger.middlewares_chrome.SuperSimpleChromeMiddleware'] = 585
