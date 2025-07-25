@@ -23,14 +23,14 @@ USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 #ROBOTSTXT_OBEY = True
 
 # Configure maximum concurrent requests performed by Scrapy (default: 16)
-CONCURRENT_REQUESTS =16
+CONCURRENT_REQUESTS = 2  # Minskat för Camoufox-kompatibilitet
 
 # Configure a delay for requests for the same website (default: 0)
 # See http://scrapy.readthedocs.org/en/latest/topics/settings.html#download-delay
 # See also autothrottle settings and docs
-DOWNLOAD_DELAY = 0.5
+DOWNLOAD_DELAY = 3.0  # Ökat för att vara mer försiktig med Camoufox
 # The download delay setting will honor only one of:
-CONCURRENT_REQUESTS_PER_DOMAIN = 4
+CONCURRENT_REQUESTS_PER_DOMAIN = 1  # Minskat för att undvika överbelastning
 #CONCURRENT_REQUESTS_PER_IP = 16
 
 # Disable cookies (enabled by default)
@@ -73,9 +73,14 @@ DEFAULT_REQUEST_HEADERS = {
 
 # Enable or disable downloader middlewares
 # See http://scrapy.readthedocs.org/en/latest/topics/downloader-middleware.html
-#DOWNLOADER_MIDDLEWARES = {
-#    'doppelganger.middlewares.MyCustomDownloaderMiddleware': 543,
-#}
+DOWNLOADER_MIDDLEWARES = {
+    'doppelganger.middlewares.RotatingUserAgentMiddleware': 400,
+    'doppelganger.middlewares.AntiBlockingMiddleware': 543,
+}
+
+# Anti-blocking inställningar
+ANTIBLOCK_ENABLED = True
+ANTIBLOCK_DELAY_RANGE = (1, 4)  # Slumpmässig fördröjning mellan 1-4 sekunder
 
 # Enable or disable extensions
 # See http://scrapy.readthedocs.org/en/latest/topics/extensions.html
@@ -90,7 +95,7 @@ ITEM_PIPELINES = {
 }
 
 
-IMAGES_STORE = '/home/marqs/Bilder/pBook'
+IMAGES_STORE = '/home/ubuntu/doppelganger/images'
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See http://doc.scrapy.org/en/latest/topics/autothrottle.html
