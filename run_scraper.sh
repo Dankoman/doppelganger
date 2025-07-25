@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Doppelganger Scraper - Enhanced Anti-Blocking Edition
+# Doppelganger Scraper - Enhanced Anti-Blocking Edition with Chrome Headless
 # Hanteringsscript för Docker-baserad scraping
 
 set -e
@@ -19,7 +19,7 @@ show_banner() {
     echo -e "${BLUE}"
     echo "╔═══════════════════════════════════════════════════════════════════════════════╗"
     echo "║                      🕷️  Doppelganger Scraper v2.0                          ║"
-    echo "║                    Enhanced Anti-Blocking Edition                            ║"
+    echo "║              Enhanced Anti-Blocking + Chrome Headless Edition               ║"
     echo "╚═══════════════════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
 }
@@ -128,6 +128,103 @@ url_debug() {
         -s CONCURRENT_REQUESTS=1
 }
 
+# Chrome Headless-funktioner
+chrome_test() {
+    show_banner
+    echo -e "${YELLOW}🧪 Testar Chrome headless-integration...${NC}"
+    check_docker
+    
+    # Testa Chrome-anslutning från host
+    echo -e "${CYAN}🔍 Testar Chrome-anslutning från host...${NC}"
+    if command -v python3 &> /dev/null; then
+        python3 test_chrome.py
+    else
+        echo -e "${YELLOW}⚠️  Python3 inte tillgängligt på host, hoppar över anslutningstest${NC}"
+    fi
+    
+    echo -e "${CYAN}🚀 Testar Chrome-scraper med 1 profil...${NC}"
+    docker-compose run --rm doppelganger-scraper scrapy crawl mpb_from_urls \
+        -s CLOSESPIDER_ITEMCOUNT=1 \
+        -s LOG_LEVEL=INFO \
+        -s CHROME_ENABLED=True \
+        -s DOWNLOAD_DELAY=8 \
+        -s CONCURRENT_REQUESTS=1
+}
+
+chrome_sample() {
+    show_banner
+    echo -e "${YELLOW}📊 Kör Chrome-scraper för 10 profiler...${NC}"
+    check_docker
+    ensure_directories
+    
+    # Kontrollera att profile_urls.txt finns
+    if [ ! -f "profile_urls.txt" ]; then
+        echo -e "${RED}❌ profile_urls.txt saknas. Kör först url_test för att sätta upp URL-listan.${NC}"
+        exit 1
+    fi
+    
+    echo -e "${CYAN}📊 Antal URL:er: $(wc -l < profile_urls.txt)${NC}"
+    
+    docker-compose run --rm doppelganger-scraper scrapy crawl mpb_from_urls \
+        -s CLOSESPIDER_ITEMCOUNT=10 \
+        -s LOG_LEVEL=INFO \
+        -s CHROME_ENABLED=True \
+        -s DOWNLOAD_DELAY=8 \
+        -s CONCURRENT_REQUESTS=1
+}
+
+chrome_run() {
+    show_banner
+    echo -e "${YELLOW}🚀 Kör Chrome-scraper för alla profiler...${NC}"
+    check_docker
+    ensure_directories
+    
+    # Kontrollera att profile_urls.txt finns
+    if [ ! -f "profile_urls.txt" ]; then
+        echo -e "${RED}❌ profile_urls.txt saknas. Kör först url_test för att sätta upp URL-listan.${NC}"
+        exit 1
+    fi
+    
+    echo -e "${CYAN}📊 Antal URL:er att scrapa: $(wc -l < profile_urls.txt)${NC}"
+    echo -e "${YELLOW}⚠️  Detta kommer att använda Chrome headless för alla profiler. Fortsätt? (y/N):${NC}"
+    read -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        docker-compose run --rm doppelganger-scraper scrapy crawl mpb_from_urls \
+            -s LOG_LEVEL=INFO \
+            -s CHROME_ENABLED=True \
+            -s DOWNLOAD_DELAY=8 \
+            -s CONCURRENT_REQUESTS=1
+    else
+        echo -e "${CYAN}ℹ️  Chrome-scraping avbruten${NC}"
+    fi
+}
+
+chrome_debug() {
+    show_banner
+    echo -e "${YELLOW}🐛 Debug Chrome-scraper...${NC}"
+    check_docker
+    ensure_directories
+    
+    # Kontrollera att profile_urls.txt finns
+    if [ ! -f "profile_urls.txt" ]; then
+        echo -e "${RED}❌ profile_urls.txt saknas. Kör först url_test för att sätta upp URL-listan.${NC}"
+        exit 1
+    fi
+    
+    echo -e "${CYAN}📊 Första 5 URL:er:${NC}"
+    head -5 profile_urls.txt
+    echo ""
+    
+    # Kör debug med Chrome
+    docker-compose run --rm doppelganger-scraper scrapy crawl mpb_from_urls \
+        -L DEBUG \
+        -s CLOSESPIDER_ITEMCOUNT=1 \
+        -s CHROME_ENABLED=True \
+        -s DOWNLOAD_DELAY=10 \
+        -s CONCURRENT_REQUESTS=1
+}
+
 # Hjälpfunktioner
 show_help() {
     show_banner
@@ -182,7 +279,7 @@ show_help() {
 case "${1:-help}" in
     "build")
         show_banner
-        echo -e "${YELLOW}🔨 Bygger Docker-imagen med Enhanced Anti-Blocking...${NC}"
+        echo -e "${YELLOW}🔨 Bygger Docker-imagen med Enhanced Anti-Blocking + Chrome...${NC}"
         check_docker
         ensure_directories
         
@@ -190,7 +287,7 @@ case "${1:-help}" in
         docker-compose build --no-cache
         
         echo -e "${GREEN}✅ Docker-imagen byggd framgångsrikt!${NC}"
-        echo -e "${CYAN}💡 Testa nu med: $0 test eller $0 url_test${NC}"
+        echo -e "${CYAN}💡 Testa nu med: $0 test, $0 url_test eller $0 chrome_test${NC}"
         ;;
         
     "test")
@@ -383,101 +480,3 @@ print(f'   Retry times: {settings.get(\"RETRY_TIMES\")}')
         show_help
         ;;
 esac
-
-# Chrome Headless-kommandon
-chrome_test() {
-    show_banner
-    echo -e "${YELLOW}🧪 Testar Chrome headless-integration...${NC}"
-    check_docker
-    
-    # Testa Chrome-anslutning från host
-    echo -e "${CYAN}🔍 Testar Chrome-anslutning från host...${NC}"
-    if command -v python3 &> /dev/null; then
-        python3 test_chrome.py
-    else
-        echo -e "${YELLOW}⚠️  Python3 inte tillgängligt på host, hoppar över anslutningstest${NC}"
-    fi
-    
-    echo -e "${CYAN}🚀 Testar Chrome-scraper med 1 profil...${NC}"
-    docker-compose run --rm doppelganger-scraper scrapy crawl mpb_from_urls \
-        -s CLOSESPIDER_ITEMCOUNT=1 \
-        -s LOG_LEVEL=INFO \
-        -s CHROME_ENABLED=True \
-        -s DOWNLOAD_DELAY=8 \
-        -s CONCURRENT_REQUESTS=1
-}
-
-chrome_sample() {
-    show_banner
-    echo -e "${YELLOW}📊 Kör Chrome-scraper för 10 profiler...${NC}"
-    check_docker
-    ensure_directories
-    
-    # Kontrollera att profile_urls.txt finns
-    if [ ! -f "profile_urls.txt" ]; then
-        echo -e "${RED}❌ profile_urls.txt saknas. Kör först url_test för att sätta upp URL-listan.${NC}"
-        exit 1
-    fi
-    
-    echo -e "${CYAN}📊 Antal URL:er: $(wc -l < profile_urls.txt)${NC}"
-    
-    docker-compose run --rm doppelganger-scraper scrapy crawl mpb_from_urls \
-        -s CLOSESPIDER_ITEMCOUNT=10 \
-        -s LOG_LEVEL=INFO \
-        -s CHROME_ENABLED=True \
-        -s DOWNLOAD_DELAY=8 \
-        -s CONCURRENT_REQUESTS=1
-}
-
-chrome_run() {
-    show_banner
-    echo -e "${YELLOW}🚀 Kör Chrome-scraper för alla profiler...${NC}"
-    check_docker
-    ensure_directories
-    
-    # Kontrollera att profile_urls.txt finns
-    if [ ! -f "profile_urls.txt" ]; then
-        echo -e "${RED}❌ profile_urls.txt saknas. Kör först url_test för att sätta upp URL-listan.${NC}"
-        exit 1
-    fi
-    
-    echo -e "${CYAN}📊 Antal URL:er att scrapa: $(wc -l < profile_urls.txt)${NC}"
-    echo -e "${YELLOW}⚠️  Detta kommer att använda Chrome headless för alla profiler. Fortsätt? (y/N):${NC}"
-    read -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        docker-compose run --rm doppelganger-scraper scrapy crawl mpb_from_urls \
-            -s LOG_LEVEL=INFO \
-            -s CHROME_ENABLED=True \
-            -s DOWNLOAD_DELAY=8 \
-            -s CONCURRENT_REQUESTS=1
-    else
-        echo -e "${CYAN}ℹ️  Chrome-scraping avbruten${NC}"
-    fi
-}
-
-chrome_debug() {
-    show_banner
-    echo -e "${YELLOW}🐛 Debug Chrome-scraper...${NC}"
-    check_docker
-    ensure_directories
-    
-    # Kontrollera att profile_urls.txt finns
-    if [ ! -f "profile_urls.txt" ]; then
-        echo -e "${RED}❌ profile_urls.txt saknas. Kör först url_test för att sätta upp URL-listan.${NC}"
-        exit 1
-    fi
-    
-    echo -e "${CYAN}📊 Första 5 URL:er:${NC}"
-    head -5 profile_urls.txt
-    echo ""
-    
-    # Kör debug med Chrome
-    docker-compose run --rm doppelganger-scraper scrapy crawl mpb_from_urls \
-        -L DEBUG \
-        -s CLOSESPIDER_ITEMCOUNT=1 \
-        -s CHROME_ENABLED=True \
-        -s DOWNLOAD_DELAY=10 \
-        -s CONCURRENT_REQUESTS=1
-}
-
