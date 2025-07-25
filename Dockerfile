@@ -65,3 +65,21 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # Standard kommando
 CMD ["scrapy", "crawl", "mpb_all"]
 
+
+# Chrome WebDriver support för headless Chrome-integration
+RUN apt-get update && apt-get install -y \
+    wget \
+    gnupg \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Installera Chrome WebDriver
+RUN CHROME_VERSION=$(curl -s https://chromedriver.storage.googleapis.com/LATEST_RELEASE) && \
+    wget -O /tmp/chromedriver.zip "https://chromedriver.storage.googleapis.com/${CHROME_VERSION}/chromedriver_linux64.zip" && \
+    unzip /tmp/chromedriver.zip -d /usr/local/bin/ && \
+    rm /tmp/chromedriver.zip && \
+    chmod +x /usr/local/bin/chromedriver
+
+# Sätt PATH för ChromeDriver
+ENV PATH="/usr/local/bin:${PATH}"
+

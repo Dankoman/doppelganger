@@ -137,3 +137,29 @@ COMPRESSION_ENABLED = True
 # Stats
 STATS_CLASS = 'scrapy.statscollectors.MemoryStatsCollector'
 
+
+# Chrome Headless Settings
+# Ansluter till befintliga chromedp/headless-shell Docker-instanser
+
+# Chrome-konfiguration
+CHROME_HOST = '192.168.0.50'
+CHROME_PORT = 9222  # Primär port
+CHROME_PORTS = [9222, 9223]  # För load balancing mellan instanser
+CHROME_ENABLED = False  # Aktiveras med -s CHROME_ENABLED=True
+
+# Chrome middleware (aktiveras endast när CHROME_ENABLED=True)
+# Lägg till i DOWNLOADER_MIDDLEWARES när Chrome används
+CHROME_MIDDLEWARE = {
+    'doppelganger.middlewares_chrome.ChromeHeadlessMiddleware': 585,
+}
+
+# Chrome-specifika inställningar
+CHROME_TIMEOUT = 30
+CHROME_PAGE_LOAD_TIMEOUT = 20
+CHROME_IMPLICIT_WAIT = 10
+
+# Justera inställningar för Chrome-användning
+CHROME_DOWNLOAD_DELAY = 8  # Längre delay för Chrome
+CHROME_CONCURRENT_REQUESTS = 1  # En åt gången för Chrome
+CHROME_RETRY_TIMES = 3  # Färre retries eftersom Chrome är mer tillförlitlig
+

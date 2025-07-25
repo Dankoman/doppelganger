@@ -154,10 +154,17 @@ show_help() {
     echo -e "  ${GREEN}url_run${NC}        Scrapa alla profiler från URL-lista"
     echo -e "  ${GREEN}url_debug${NC}      Debug URL-baserad scraper"
     echo ""
+    echo -e "${CYAN}Chrome Headless-kommandon (använder chromedp/headless-shell):${NC}"
+    echo -e "  ${GREEN}chrome_test${NC}     Testa Chrome headless-integration (1 profil)"
+    echo -e "  ${GREEN}chrome_sample${NC}   Scrapa 10 profiler med Chrome headless"
+    echo -e "  ${GREEN}chrome_run${NC}      Scrapa alla profiler med Chrome headless"
+    echo -e "  ${GREEN}chrome_debug${NC}    Debug Chrome headless-scraper"
+    echo ""
     echo -e "${YELLOW}Exempel:${NC}"
     echo -e "  $0 build && $0 test     ${PURPLE}# Bygg och testa${NC}"
     echo -e "  $0 url_test             ${PURPLE}# Testa URL-scraper${NC}"
-    echo -e "  $0 url_sample           ${PURPLE}# Scrapa 100 profiler${NC}"
+    echo -e "  $0 chrome_test          ${PURPLE}# Testa Chrome headless${NC}"
+    echo -e "  $0 chrome_sample        ${PURPLE}# Scrapa 10 profiler med Chrome${NC}"
     echo -e "  $0 logs                 ${PURPLE}# Övervaka framsteg${NC}"
     echo ""
     echo -e "${CYAN}Förbättringar i v2.0:${NC}"
@@ -167,6 +174,7 @@ show_help() {
     echo -e "  ✅ Adaptiv fördröjning vid 403-fel"
     echo -e "  ✅ Exponential backoff retry-logik"
     echo -e "  ✅ URL-baserad scraping (kringgår blockering)"
+    echo -e "  ✅ Chrome headless-integration (ultimat bot-bypass)"
     echo ""
 }
 
@@ -355,7 +363,121 @@ print(f'   Retry times: {settings.get(\"RETRY_TIMES\")}')
         url_debug
         ;;
         
+    "chrome_test")
+        chrome_test
+        ;;
+        
+    "chrome_sample")
+        chrome_sample
+        ;;
+        
+    "chrome_run")
+        chrome_run
+        ;;
+        
+    "chrome_debug")
+        chrome_debug
+        ;;
+        
     "help"|*)
         show_help
         ;;
 esac
+
+# Chrome Headless-kommandon
+chrome_test() {
+    show_banner
+    echo -e "${YELLOW}🧪 Testar Chrome headless-integration...${NC}"
+    check_docker
+    
+    # Testa Chrome-anslutning från host
+    echo -e "${CYAN}🔍 Testar Chrome-anslutning från host...${NC}"
+    if command -v python3 &> /dev/null; then
+        python3 test_chrome.py
+    else
+        echo -e "${YELLOW}⚠️  Python3 inte tillgängligt på host, hoppar över anslutningstest${NC}"
+    fi
+    
+    echo -e "${CYAN}🚀 Testar Chrome-scraper med 1 profil...${NC}"
+    docker-compose run --rm doppelganger-scraper scrapy crawl mpb_from_urls \
+        -s CLOSESPIDER_ITEMCOUNT=1 \
+        -s LOG_LEVEL=INFO \
+        -s CHROME_ENABLED=True \
+        -s DOWNLOAD_DELAY=8 \
+        -s CONCURRENT_REQUESTS=1
+}
+
+chrome_sample() {
+    show_banner
+    echo -e "${YELLOW}📊 Kör Chrome-scraper för 10 profiler...${NC}"
+    check_docker
+    ensure_directories
+    
+    # Kontrollera att profile_urls.txt finns
+    if [ ! -f "profile_urls.txt" ]; then
+        echo -e "${RED}❌ profile_urls.txt saknas. Kör först url_test för att sätta upp URL-listan.${NC}"
+        exit 1
+    fi
+    
+    echo -e "${CYAN}📊 Antal URL:er: $(wc -l < profile_urls.txt)${NC}"
+    
+    docker-compose run --rm doppelganger-scraper scrapy crawl mpb_from_urls \
+        -s CLOSESPIDER_ITEMCOUNT=10 \
+        -s LOG_LEVEL=INFO \
+        -s CHROME_ENABLED=True \
+        -s DOWNLOAD_DELAY=8 \
+        -s CONCURRENT_REQUESTS=1
+}
+
+chrome_run() {
+    show_banner
+    echo -e "${YELLOW}🚀 Kör Chrome-scraper för alla profiler...${NC}"
+    check_docker
+    ensure_directories
+    
+    # Kontrollera att profile_urls.txt finns
+    if [ ! -f "profile_urls.txt" ]; then
+        echo -e "${RED}❌ profile_urls.txt saknas. Kör först url_test för att sätta upp URL-listan.${NC}"
+        exit 1
+    fi
+    
+    echo -e "${CYAN}📊 Antal URL:er att scrapa: $(wc -l < profile_urls.txt)${NC}"
+    echo -e "${YELLOW}⚠️  Detta kommer att använda Chrome headless för alla profiler. Fortsätt? (y/N):${NC}"
+    read -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        docker-compose run --rm doppelganger-scraper scrapy crawl mpb_from_urls \
+            -s LOG_LEVEL=INFO \
+            -s CHROME_ENABLED=True \
+            -s DOWNLOAD_DELAY=8 \
+            -s CONCURRENT_REQUESTS=1
+    else
+        echo -e "${CYAN}ℹ️  Chrome-scraping avbruten${NC}"
+    fi
+}
+
+chrome_debug() {
+    show_banner
+    echo -e "${YELLOW}🐛 Debug Chrome-scraper...${NC}"
+    check_docker
+    ensure_directories
+    
+    # Kontrollera att profile_urls.txt finns
+    if [ ! -f "profile_urls.txt" ]; then
+        echo -e "${RED}❌ profile_urls.txt saknas. Kör först url_test för att sätta upp URL-listan.${NC}"
+        exit 1
+    fi
+    
+    echo -e "${CYAN}📊 Första 5 URL:er:${NC}"
+    head -5 profile_urls.txt
+    echo ""
+    
+    # Kör debug med Chrome
+    docker-compose run --rm doppelganger-scraper scrapy crawl mpb_from_urls \
+        -L DEBUG \
+        -s CLOSESPIDER_ITEMCOUNT=1 \
+        -s CHROME_ENABLED=True \
+        -s DOWNLOAD_DELAY=10 \
+        -s CONCURRENT_REQUESTS=1
+}
+
