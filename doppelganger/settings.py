@@ -208,3 +208,16 @@ print("🦊 Camoufox-konfiguration laddad!")
 print(f"   Host: {CAMOUFOX_HOST}:{CAMOUFOX_PORT}")
 print(f"   Delay: {DOWNLOAD_DELAY}s")
 print(f"   Cloudflare wait: {CAMOUFOX_CLOUDFLARE_WAIT}s")
+
+# FÖRBÄTTRADE Camoufox timeout-inställningar för att förhindra hanging
+CAMOUFOX_PAGE_LOAD_TIMEOUT = 15      # Kortare sidladdning timeout
+CAMOUFOX_CLOUDFLARE_WAIT = 10        # Kortare Cloudflare wait
+CAMOUFOX_WEBDRIVER_TIMEOUT = 10      # WebDriver timeout
+CAMOUFOX_CONNECTION_TIMEOUT = 5      # HTTP connection timeout
+CAMOUFOX_HUMAN_DELAY_MIN = 1         # Kortare minimum delay
+CAMOUFOX_HUMAN_DELAY_MAX = 3         # Kortare maximum delay
+
+print("🔧 Förbättrade Camoufox timeout-inställningar laddade!")
+print(f"   Page load timeout: {CAMOUFOX_PAGE_LOAD_TIMEOUT}s")
+print(f"   WebDriver timeout: {CAMOUFOX_WEBDRIVER_TIMEOUT}s")
+print(f"   Connection timeout: {CAMOUFOX_CONNECTION_TIMEOUT}s")
