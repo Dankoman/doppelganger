@@ -1,3 +1,23 @@
+#!/bin/bash
+
+# Fix för Camoufox hanging-problem
+echo "🔧 Fixar Camoufox hanging-problem..."
+
+# Kontrollera att vi är i rätt katalog
+if [ ! -f "doppelganger/middlewares_camoufox.py" ]; then
+    echo "❌ Fel: middlewares_camoufox.py inte hittad. Kör detta script från doppelganger root-katalogen"
+    exit 1
+fi
+
+# Backup befintliga filer
+echo "📦 Skapar backup..."
+cp doppelganger/middlewares_camoufox.py doppelganger/middlewares_camoufox.py.backup.hanging.$(date +%Y%m%d_%H%M%S)
+cp doppelganger/settings.py doppelganger/settings.py.backup.hanging.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true
+
+echo "🔧 Uppdaterar Camoufox middleware med timeout-fixes..."
+
+# Ersätt middlewares_camoufox.py med förbättrad version
+cat > doppelganger/middlewares_camoufox.py << 'EOF'
 """
 Camoufox Middleware för att kringgå Cloudflare bot-protection
 FÖRBÄTTRAD VERSION med timeout-hantering och debug
@@ -305,3 +325,164 @@ class CamoufoxDownloaderMiddleware:
             logger.info(f"✅ 200 OK: {request.url}")
             
         return response
+EOF
+
+echo "⚙️ Uppdaterar settings.py med förbättrade timeout-inställningar..."
+
+# Lägg till förbättrade timeout-inställningar i settings.py
+cat >> doppelganger/settings.py << 'EOF'
+
+# FÖRBÄTTRADE Camoufox timeout-inställningar för att förhindra hanging
+CAMOUFOX_PAGE_LOAD_TIMEOUT = 15      # Kortare sidladdning timeout
+CAMOUFOX_CLOUDFLARE_WAIT = 10        # Kortare Cloudflare wait
+CAMOUFOX_WEBDRIVER_TIMEOUT = 10      # WebDriver timeout
+CAMOUFOX_CONNECTION_TIMEOUT = 5      # HTTP connection timeout
+CAMOUFOX_HUMAN_DELAY_MIN = 1         # Kortare minimum delay
+CAMOUFOX_HUMAN_DELAY_MAX = 3         # Kortare maximum delay
+
+print("🔧 Förbättrade Camoufox timeout-inställningar laddade!")
+print(f"   Page load timeout: {CAMOUFOX_PAGE_LOAD_TIMEOUT}s")
+print(f"   WebDriver timeout: {CAMOUFOX_WEBDRIVER_TIMEOUT}s")
+print(f"   Connection timeout: {CAMOUFOX_CONNECTION_TIMEOUT}s")
+EOF
+
+echo "🧪 Skapar connection test script..."
+
+# Skapa test script
+cat > test_camoufox_connection.py << 'EOF'
+#!/usr/bin/env python3
+import time
+import requests
+from selenium import webdriver
+from selenium.webdriver.firefox.options import Options
+from selenium.common.exceptions import TimeoutException, WebDriverException
+
+def test_camoufox_server():
+    print("🔍 Testar Camoufox-server anslutning...")
+    
+    print("\n1️⃣ Testar HTTP status endpoint...")
+    try:
+        response = requests.get("http://camoufox-server:4444/wd/hub/status", timeout=5)
+        if response.status_code == 200:
+            print("✅ HTTP status OK")
+            print(f"   Response: {response.json()}")
+        else:
+            print(f"❌ HTTP status fel: {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"❌ HTTP anslutning misslyckades: {e}")
+        return False
+    
+    print("\n2️⃣ Testar WebDriver session...")
+    driver = None
+    try:
+        options = Options()
+        options.add_argument('--headless')
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        
+        print("   Skapar WebDriver session...")
+        driver = webdriver.Remote(
+            command_executor='http://camoufox-server:4444/wd/hub',
+            options=options
+        )
+        
+        driver.set_page_load_timeout(10)
+        driver.implicitly_wait(5)
+        
+        print("✅ WebDriver session skapad")
+        
+        print("\n3️⃣ Testar sidladdning...")
+        start_time = time.time()
+        driver.get("https://httpbin.org/user-agent")
+        load_time = time.time() - start_time
+        
+        print(f"✅ Sida laddad på {load_time:.2f}s")
+        
+        page_source = driver.page_source
+        if "Mozilla" in page_source:
+            print(f"✅ Innehåll hämtat ({len(page_source)} tecken)")
+        else:
+            print(f"⚠️ Oväntat innehåll ({len(page_source)} tecken)")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ WebDriver test fel: {e}")
+        return False
+    finally:
+        if driver:
+            try:
+                driver.quit()
+                print("🔒 WebDriver session stängd")
+            except:
+                pass
+
+if __name__ == "__main__":
+    success = test_camoufox_server()
+    exit(0 if success else 1)
+EOF
+
+chmod +x test_camoufox_connection.py
+
+echo "🚀 Uppdaterar run_scraper.sh med debug-kommandon..."
+
+# Lägg till debug-kommandon i run_scraper.sh
+if ! grep -q "camoufox_connection_test" run_scraper.sh; then
+    sed -i '/camoufox_logs() {/a\
+\
+camoufox_connection_test() {\
+    echo -e "${BLUE}🔍 Testar Camoufox-server anslutning...${NC}"\
+    docker-compose up -d camoufox-server\
+    sleep 10\
+    \
+    echo -e "${YELLOW}🧪 Kör connection test...${NC}"\
+    docker-compose run --rm camoufox-scraper python3 test_camoufox_connection.py\
+}\
+\
+camoufox_quick_test() {\
+    echo -e "${PURPLE}🦊 Snabb Camoufox-test (kortare timeouts)...${NC}"\
+    docker-compose up -d camoufox-server\
+    sleep 5\
+    \
+    docker-compose run --rm camoufox-scraper scrapy crawl mpb_from_urls \\\
+        -s CLOSESPIDER_ITEMCOUNT=1 \\\
+        -s CAMOUFOX_ENABLED=True \\\
+        -s LOG_LEVEL=DEBUG \\\
+        -s DOWNLOAD_DELAY=5 \\\
+        -s CAMOUFOX_PAGE_LOAD_TIMEOUT=10 \\\
+        -s CAMOUFOX_WEBDRIVER_TIMEOUT=8\
+}' run_scraper.sh
+
+    # Lägg till i case-statement
+    sed -i '/^    "camoufox_logs")/a\
+    "camoufox_connection_test")\
+        camoufox_connection_test\
+        ;;\
+    "camoufox_quick_test")\
+        camoufox_quick_test\
+        ;;' run_scraper.sh
+
+    # Lägg till i hjälp
+    sed -i '/camoufox_logs     Visa Camoufox-server loggar/a\
+        echo "  camoufox_connection_test  Testa Camoufox-server anslutning"\
+        echo "  camoufox_quick_test       Snabb test med kortare timeouts"' run_scraper.sh
+fi
+
+echo ""
+echo "🎉 Camoufox hanging-problem fixat!"
+echo ""
+echo "📋 Nya debug-kommandon:"
+echo "  ./run_scraper.sh camoufox_connection_test  # Testa server-anslutning"
+echo "  ./run_scraper.sh camoufox_quick_test       # Snabb test med kortare timeouts"
+echo ""
+echo "🔧 Förbättringar:"
+echo "  ✅ Kortare timeouts (10s WebDriver, 15s page load)"
+echo "  ✅ Bättre felhantering och logging"
+echo "  ✅ Automatisk fallback efter 3 misslyckade försök"
+echo "  ✅ Connection test för debugging"
+echo ""
+echo "🧪 Testa nu:"
+echo "  ./run_scraper.sh camoufox_connection_test"
+echo "  ./run_scraper.sh camoufox_quick_test"
+

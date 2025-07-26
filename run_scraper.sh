@@ -261,6 +261,8 @@ show_help() {
         echo "  camoufox_verify   Verifiera Camoufox-installation"
         echo "  camoufox_stop     Stoppa Camoufox-server"
         echo "  camoufox_logs     Visa Camoufox-server loggar"
+        echo "  camoufox_connection_test  Testa Camoufox-server anslutning"
+        echo "  camoufox_quick_test       Snabb test med kortare timeouts"
     echo -e "  ${GREEN}chrome_test${NC}     Testa Chrome headless-integration (1 profil)"
     echo -e "  ${GREEN}chrome_sample${NC}   Scrapa 10 profiler med Chrome headless"
     echo -e "  ${GREEN}chrome_run${NC}      Scrapa alla profiler med Chrome headless"
@@ -377,6 +379,29 @@ camoufox_stop() {
 }
 
 camoufox_logs() {
+
+camoufox_connection_test() {
+    echo -e "${BLUE}🔍 Testar Camoufox-server anslutning...${NC}"
+    docker-compose up -d camoufox-server
+    sleep 10
+    
+    echo -e "${YELLOW}🧪 Kör connection test...${NC}"
+    docker-compose run --rm camoufox-scraper python3 test_camoufox_connection.py
+}
+
+camoufox_quick_test() {
+    echo -e "${PURPLE}🦊 Snabb Camoufox-test (kortare timeouts)...${NC}"
+    docker-compose up -d camoufox-server
+    sleep 5
+    
+    docker-compose run --rm camoufox-scraper scrapy crawl mpb_from_urls \
+        -s CLOSESPIDER_ITEMCOUNT=1 \
+        -s CAMOUFOX_ENABLED=True \
+        -s LOG_LEVEL=DEBUG \
+        -s DOWNLOAD_DELAY=5 \
+        -s CAMOUFOX_PAGE_LOAD_TIMEOUT=10 \
+        -s CAMOUFOX_WEBDRIVER_TIMEOUT=8
+}
     echo -e "${YELLOW}📋 Visar Camoufox-server loggar...${NC}"
     docker-compose logs camoufox-server
 }
@@ -601,6 +626,12 @@ print(f'   Retry times: {settings.get(\"RETRY_TIMES\")}')
         camoufox_stop
         ;;
     "camoufox_logs")
+    "camoufox_connection_test")
+        camoufox_connection_test
+        ;;
+    "camoufox_quick_test")
+        camoufox_quick_test
+        ;;
         camoufox_logs
         ;;
     "help"|*)
@@ -625,6 +656,12 @@ print(f'   Retry times: {settings.get(\"RETRY_TIMES\")}')
         camoufox_stop
         ;;
     "camoufox_logs")
+    "camoufox_connection_test")
+        camoufox_connection_test
+        ;;
+    "camoufox_quick_test")
+        camoufox_quick_test
+        ;;
         camoufox_logs
         ;;
 esac
@@ -705,6 +742,29 @@ camoufox_stop() {
 }
 
 camoufox_logs() {
+
+camoufox_connection_test() {
+    echo -e "${BLUE}🔍 Testar Camoufox-server anslutning...${NC}"
+    docker-compose up -d camoufox-server
+    sleep 10
+    
+    echo -e "${YELLOW}🧪 Kör connection test...${NC}"
+    docker-compose run --rm camoufox-scraper python3 test_camoufox_connection.py
+}
+
+camoufox_quick_test() {
+    echo -e "${PURPLE}🦊 Snabb Camoufox-test (kortare timeouts)...${NC}"
+    docker-compose up -d camoufox-server
+    sleep 5
+    
+    docker-compose run --rm camoufox-scraper scrapy crawl mpb_from_urls \
+        -s CLOSESPIDER_ITEMCOUNT=1 \
+        -s CAMOUFOX_ENABLED=True \
+        -s LOG_LEVEL=DEBUG \
+        -s DOWNLOAD_DELAY=5 \
+        -s CAMOUFOX_PAGE_LOAD_TIMEOUT=10 \
+        -s CAMOUFOX_WEBDRIVER_TIMEOUT=8
+}
     echo "📋 Visar Camoufox-server loggar..."
     docker-compose logs camoufox-server
 }
