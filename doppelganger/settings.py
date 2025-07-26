@@ -88,7 +88,7 @@ ITEM_PIPELINES = {
     "doppelganger.pipelines.PerformerImagePipeline": 1,
 }
 
-IMAGES_STORE = '/app/images'
+IMAGES_STORE = '/root/doppelganger/images'
 
 # Enable and configure the AutoThrottle extension (mycket konservativt)
 AUTOTHROTTLE_ENABLED = True
