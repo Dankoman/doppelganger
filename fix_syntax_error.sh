@@ -1,5 +1,24 @@
 #!/bin/bash
 
+# Fix för syntax-fel i run_scraper.sh
+echo "🔧 Fixar syntax-fel i run_scraper.sh..."
+
+# Kontrollera att vi är i rätt katalog
+if [ ! -f "run_scraper.sh" ]; then
+    echo "❌ Fel: run_scraper.sh inte hittad. Kör detta script från doppelganger root-katalogen"
+    exit 1
+fi
+
+# Backup befintlig fil
+cp run_scraper.sh run_scraper.sh.backup.syntax.$(date +%Y%m%d_%H%M%S)
+echo "📦 Backup skapad: run_scraper.sh.backup.syntax.$(date +%Y%m%d_%H%M%S)"
+
+echo "🔧 Ersätter run_scraper.sh med fixad version..."
+
+# Ersätt med fixad version
+cat > run_scraper.sh << 'EOF'
+#!/bin/bash
+
 # Doppelganger Scraper - Enhanced Anti-Blocking Edition with Chrome Headless + Camoufox
 # Hanteringsscript för Docker-baserad scraping
 
@@ -434,3 +453,21 @@ case "${1:-help}" in
         show_help
         ;;
 esac
+EOF
+
+# Gör scriptet körbart
+chmod +x run_scraper.sh
+
+echo ""
+echo "🎉 Syntax-fel fixat!"
+echo ""
+echo "📋 Vad som fixats:"
+echo "  ✅ Borttaget duplicerade funktioner"
+echo "  ✅ Fixat ofullständiga funktioner"
+echo "  ✅ Rensat case-statement struktur"
+echo "  ✅ Lagt till alla Camoufox-kommandon"
+echo ""
+echo "🧪 Testa nu:"
+echo "  ./run_scraper.sh build"
+echo "  ./run_scraper.sh camoufox_test"
+
