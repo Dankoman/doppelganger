@@ -9,3 +9,5 @@ face_extractor/arcface_work/embeddings.pkl
 .pw-browsers/*
 crawls/*
 *.backup.*
+.scrapy/*
+doppelganger/__pycache__/*

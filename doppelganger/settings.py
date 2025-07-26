@@ -181,10 +181,10 @@ CAMOUFOX_HUMAN_DELAY_MIN = 2         # Minimum delay mellan åtgärder (sekunder
 CAMOUFOX_HUMAN_DELAY_MAX = 8         # Maximum delay mellan åtgärder (sekunder)
 
 # Lokal Camoufox middleware (ersätter Docker-baserad)
-DOWNLOADER_MIDDLEWARES.update({
-    'doppelganger.middlewares_camoufox_local.CamoufoxLocalMiddleware': 543,
-    'doppelganger.middlewares_camoufox_local.CamoufoxLocalDownloaderMiddleware': 544,
-})
+#DOWNLOADER_MIDDLEWARES.update({
+#    'doppelganger.middlewares_camoufox_local.CamoufoxLocalMiddleware': 543,
+#    'doppelganger.middlewares_camoufox_local.CamoufoxLocalDownloaderMiddleware': 544,
+#})
 
 DOWNLOAD_DELAY = 8
 RANDOMIZE_DOWNLOAD_DELAY = 0.5
