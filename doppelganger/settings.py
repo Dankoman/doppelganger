@@ -165,19 +165,25 @@ CHROME_RETRY_TIMES = 3  # Färre retries eftersom Chrome är mer tillförlitlig
 
 DOWNLOADER_MIDDLEWARES['doppelganger.middlewares_chrome.SuperSimpleChromeMiddleware'] = 585
 
-# Camoufox-specifika inställningar
+# =============================================================================
+# LOKAL CAMOUFOX KONFIGURATION (ersätter Docker Compose)
+# =============================================================================
+
+# Aktivera lokal Camoufox
 CAMOUFOX_ENABLED = True
-CAMOUFOX_HOST = 'camoufox-server'
-CAMOUFOX_PORT = 4444
 
-CAMOUFOX_PAGE_LOAD_TIMEOUT = 30
-CAMOUFOX_CLOUDFLARE_WAIT = 15
-CAMOUFOX_HUMAN_DELAY_MIN = 2
-CAMOUFOX_HUMAN_DELAY_MAX = 8
+# Timeout-inställningar för lokal Camoufox
+CAMOUFOX_PAGE_LOAD_TIMEOUT = 30      # Timeout för sidladdning (sekunder)
+CAMOUFOX_CLOUDFLARE_WAIT = 15        # Väntetid för Cloudflare challenge (sekunder)
 
+# Mänskligt beteende simulation
+CAMOUFOX_HUMAN_DELAY_MIN = 2         # Minimum delay mellan åtgärder (sekunder)
+CAMOUFOX_HUMAN_DELAY_MAX = 8         # Maximum delay mellan åtgärder (sekunder)
+
+# Lokal Camoufox middleware (ersätter Docker-baserad)
 DOWNLOADER_MIDDLEWARES.update({
-    'doppelganger.middlewares_camoufox.CamoufoxMiddleware': 543,
-    'doppelganger.middlewares_camoufox.CamoufoxDownloaderMiddleware': 544,
+    'doppelganger.middlewares_camoufox_local.CamoufoxLocalMiddleware': 543,
+    'doppelganger.middlewares_camoufox_local.CamoufoxLocalDownloaderMiddleware': 544,
 })
 
 DOWNLOAD_DELAY = 8
@@ -204,20 +210,7 @@ DOWNLOADER_MIDDLEWARES.update({
     'doppelganger.middlewares_chrome.SuperSimpleChromeMiddleware': None,
 })
 
-print("🦊 Camoufox-konfiguration laddad!")
-print(f"   Host: {CAMOUFOX_HOST}:{CAMOUFOX_PORT}")
+print("🦊 Lokal Camoufox-konfiguration laddad!")
+print(f"   Lokal installation aktiverad")
 print(f"   Delay: {DOWNLOAD_DELAY}s")
 print(f"   Cloudflare wait: {CAMOUFOX_CLOUDFLARE_WAIT}s")
-
-# FÖRBÄTTRADE Camoufox timeout-inställningar för att förhindra hanging
-CAMOUFOX_PAGE_LOAD_TIMEOUT = 15      # Kortare sidladdning timeout
-CAMOUFOX_CLOUDFLARE_WAIT = 10        # Kortare Cloudflare wait
-CAMOUFOX_WEBDRIVER_TIMEOUT = 10      # WebDriver timeout
-CAMOUFOX_CONNECTION_TIMEOUT = 5      # HTTP connection timeout
-CAMOUFOX_HUMAN_DELAY_MIN = 1         # Kortare minimum delay
-CAMOUFOX_HUMAN_DELAY_MAX = 3         # Kortare maximum delay
-
-print("🔧 Förbättrade Camoufox timeout-inställningar laddade!")
-print(f"   Page load timeout: {CAMOUFOX_PAGE_LOAD_TIMEOUT}s")
-print(f"   WebDriver timeout: {CAMOUFOX_WEBDRIVER_TIMEOUT}s")
-print(f"   Connection timeout: {CAMOUFOX_CONNECTION_TIMEOUT}s")
