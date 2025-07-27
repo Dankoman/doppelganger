@@ -61,6 +61,7 @@ SPIDER_MIDDLEWARES = {
 # Enable or disable downloader middlewares med förbättrade klasser
 DOWNLOADER_MIDDLEWARES = {
     'doppelganger.middlewares.EnhancedUserAgentMiddleware': 400,
+    'doppelganger.middlewares_proxy.ProxyRotatorMiddleware': 500,  # Lägg till proxy middleware
     'doppelganger.middlewares.AdvancedAntiBlockingMiddleware': 543,
     'doppelganger.middlewares.EnhancedRetryMiddleware': 550,
 }
@@ -68,6 +69,10 @@ DOWNLOADER_MIDDLEWARES = {
 # Anti-blocking inställningar (förbättrade)
 ANTIBLOCK_ENABLED = True
 ANTIBLOCK_DELAY_RANGE = (3, 10)  # Längre fördröjningar
+
+# Proxy-inställningar
+PROXY_LIST_PATH = '/home/ubuntu/doppelganger/proxy/proxies.txt'  # Sökväg till proxy-filen
+PROXY_ENABLED = True  # Aktivera proxy-rotation
 
 # Retry-inställningar
 RETRY_ENABLED = True
