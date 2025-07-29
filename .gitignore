@@ -13,3 +13,4 @@ doppelganger/__pycache__/*
 
 
 face_extractor/arcface_work
+face_extractor/*.pkl
