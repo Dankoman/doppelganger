@@ -31,7 +31,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from insightface.app import FaceAnalysis
 
 # ------------------ Default ------------------
-DEFAULT_DATA_ROOT   = "/home/marqs/Bilder/pr0n/Faces"
+DEFAULT_DATA_ROOT   = "/home/marqs/Bilder/pBook"
 DEFAULT_WORKDIR     = "./arcface_work"
 EMB_PKL             = "embeddings.pkl"
 PROC_JSONL          = "processed.jsonl"
