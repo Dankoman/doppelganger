@@ -75,11 +75,15 @@ def load_embeddings(emb_path: Path) -> Tuple[List[np.ndarray], List[str]]:
         data = pickle.load(f)
     return data["X"], data["y"]
 
-def save_embeddings(emb_path: Path, X: List[np.ndarray], y: List[str]) -> None:
-    tmp = emb_path.with_suffix(emb_path.suffix + ".tmp")
+def save_embeddings(emb_path: Path, X, y):
+    """Sparar embeddings till en temporär fil och byter namn."""
+    emb_path = Path(emb_path)  # Se till att emb_path är en Path-objekt
+    emb_path.parent.mkdir(parents=True, exist_ok=True)  # Skapa mappen om den inte finns
+
+    tmp = emb_path.with_suffix(".tmp")
     with tmp.open("wb") as f:
-        pickle.dump({"X": X, "y": y}, f, protocol=pickle.HIGHEST_PROTOCOL)
-    tmp.replace(emb_path)
+        pickle.dump({"X": X, "y": y}, f)
+    tmp.rename(emb_path)
 
 def iter_images(root: Path):
     exts = {".jpg", ".jpeg", ".png", ".bmp"}
@@ -263,9 +267,12 @@ def train(args) -> None:
 
 # ------------------ CLI ---------------------
 def main():
+    global EMB_PKL  # Flytta global-deklarationen hit
+
     ap = argparse.ArgumentParser(description="ArcFace-pipeline (progressbar + checkpoints, fallback & upsampling)")
     ap.add_argument("--data-root", default=DEFAULT_DATA_ROOT, help="Rotmapp med personmappar")
     ap.add_argument("--workdir",   default=DEFAULT_WORKDIR,   help="Arbetsmapp/checkpoints")
+    ap.add_argument("--embeddings", default=EMB_PKL,          help="Fil med embeddings (.pkl)")  # Nytt argument
     ap.add_argument("--model-out", default=MODEL_PKL,         help="Filnamn för sparad modell (.pkl)")
     ap.add_argument("--mode", choices=["encode", "train", "both"], default="both")
     ap.add_argument("--flush-every", type=int, default=200, help="Spara embeddings var N:e lyckade bild")
@@ -279,6 +286,8 @@ def main():
                     help="Upsampla små bilder innan ny detektionskörning")
 
     args = ap.parse_args()
+
+    EMB_PKL = args.embeddings  # Uppdatera den globala variabeln
 
     if args.mode in ("encode", "both"):
         encode(args)

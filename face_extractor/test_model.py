@@ -10,7 +10,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from insightface.app import FaceAnalysis
 
 # ---------- Standardvärden ----------
-DEFAULT_MODEL       = "face_knn_arcface.pkl"
+DEFAULT_MODEL       = "face_knn_arcface_interim.pkl"
 DEFAULT_THRESHOLD   = 0.55
 MIN_WIDTH           = 40
 MIN_HEIGHT          = 40
@@ -139,46 +139,55 @@ def main():
     app.prepare(ctx_id=0)
     rec_model = app.models["recognition"]
 
-    # Beräkna embedding
-    emb, n_faces, used_fb, rot_deg = compute_embedding(
-        app, rec_model, args.image,
-        allow_fallback=args.allow_fallback,
-        allow_upsample=args.allow_upsample,
-        try_rotate=args.try_rotate
-    )
-
-    if emb is None or n_faces != 1:
-        print(f"⏭️ {args.image}: {n_faces} ansikten hittades (embedding=None)")
+    # Ladda bilden
+    img_rgb = load_image_rgb(args.image)
+    if img_rgb is None:
+        print(f"❌ Kunde inte läsa bilden: {args.image}")
         return
 
-    # Predicera
-    probs = clf.predict_proba([emb])[0]
-    pred_id = np.argmax(probs)
-    prob = probs[pred_id]
-    name = le.inverse_transform([pred_id])[0]
+    # Detektera ansikten
+    faces = detect_once(app, img_rgb)
+    if len(faces) == 0:
+        print(f"⏭️ {args.image}: Inga ansikten hittades")
+        return
 
-    # Cosine mot närmaste prototyp
-    neigh_id = clf.kneighbors([emb], n_neighbors=1, return_distance=False)[0][0]
-    proto    = clf._fit_X[neigh_id]
-    cos_sim  = cosine_similarity([emb], [proto])[0, 0]
+    print(f"Bild: {args.image}")
+    print(f"Antal ansikten: {len(faces)}")
 
-    unknown = False
-    if args.threshold >= 0 and cos_sim < args.threshold:
-        name = "UNKNOWN"
-        unknown = True
+    # Iterera över alla ansikten
+    for i, face in enumerate(faces):
+        emb = face.embedding
+        if emb is None or emb.size == 0:
+            print(f"  Ansikte {i + 1}: Ingen embedding tillgänglig")
+            continue
 
-    # Utskrift
-    print(f"Bild:        {args.image}")
-    print(f"Ansikten:    {n_faces}  (fallback={used_fb}, rotation={rot_deg})")
-    print(f"Prediktion:  {name}")
-    print(f"P(class):    {prob:.3f}")
-    print(f"CosSim:      {cos_sim:.3f}  (thr={args.threshold})")
+        # Predicera
+        probs = clf.predict_proba([emb])[0]
+        pred_id = np.argmax(probs)
+        prob = probs[pred_id]
+        name = le.inverse_transform([pred_id])[0]
 
-    if not unknown and args.topk > 1:
-        idxs = probs.argsort()[-args.topk:][::-1]
-        print("Top-K:")
-        for i in idxs:
-            print(f"  {le.inverse_transform([i])[0]:20s}  prob={probs[i]:.3f}")
+        # Cosine mot närmaste prototyp
+        neigh_id = clf.kneighbors([emb], n_neighbors=1, return_distance=False)[0][0]
+        proto    = clf._fit_X[neigh_id]
+        cos_sim  = cosine_similarity([emb], [proto])[0, 0]
+
+        unknown = False
+        if args.threshold >= 0 and cos_sim < args.threshold:
+            name = "UNKNOWN"
+            unknown = True
+
+        # Utskrift för varje ansikte
+        print(f"  Ansikte {i + 1}:")
+        print(f"    Prediktion:  {name}")
+        print(f"    P(class):    {prob:.3f}")
+        print(f"    CosSim:      {cos_sim:.3f}  (thr={args.threshold})")
+
+        if not unknown and args.topk > 1:
+            idxs = probs.argsort()[-args.topk:][::-1]
+            print("    Top-K:")
+            for j in idxs:
+                print(f"      {le.inverse_transform([j])[0]:20s}  prob={probs[j]:.3f}")
 
 if __name__ == "__main__":
     try:

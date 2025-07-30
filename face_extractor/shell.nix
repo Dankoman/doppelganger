@@ -15,6 +15,7 @@ pkgs.mkShell {
     pkgs.cmake pkgs.pkg-config pkgs.gcc pkgs.gfortran pkgs.openblas
     pkgs.boost pkgs.eigen
     pkgs.curl pkgs.openssl pkgs.git
+    pkgs.dejavu_fonts  # Korrekt paketnamn för DejaVu-fonten
   ];
 
   shellHook = ''
