@@ -9,6 +9,16 @@
     <h1>Resultat</h1>
     <img src="{{ result_image }}" alt="Resultatbild" style="max-width: 100%; height: auto;">
     <br>
-    <button onclick="window.location.href='/'">Tillbaka</button>
+    <button onclick="clearTemp()">Tillbaka</button>
+
+    <script>
+        function clearTemp() {
+            fetch('/clear_temp', { method: 'POST' })
+                .then(() => {
+                    window.location.href = '/';
+                })
+                .catch(err => console.error("Kunde inte rensa filer:", err));
+        }
+    </script>
 </body>
 </html>

@@ -51,9 +51,12 @@ def draw_bounding_boxes(image_path, faces, predictions):
         else:
             color = "green"
 
+        # Formatera värdet som procent
+        percentage = cos_sim * 100
+        label = f"{name} ({percentage:.1f}%)"
+
         # Rita bounding box och text
         draw.rectangle([bbox[0], bbox[1], bbox[2], bbox[3]], outline=color, width=3)
-        label = f"{name} ({cos_sim:.2f})"
         draw.text((bbox[0], bbox[1] - 20), label, fill=color, font=font)
 
     # Spara resultatbilden i RESULT_FOLDER
@@ -111,6 +114,20 @@ def index():
         return render_template("result.html", result_image=result_image_url)
 
     return render_template("index.html")
+
+
+@app.route("/clear_temp", methods=["POST"])
+def clear_temp():
+    """Rensar temporära filer."""
+    for folder in [UPLOAD_FOLDER, RESULT_FOLDER]:
+        for file in os.listdir(folder):
+            file_path = os.path.join(folder, file)
+            try:
+                if os.path.isfile(file_path):
+                    os.unlink(file_path)  # Ta bort filen
+            except Exception as e:
+                print(f"⚠️  Kunde inte ta bort {file_path}: {e}")
+    return "Temporära filer rensade", 200
 
 
 if __name__ == "__main__":
