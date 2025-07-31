@@ -19,14 +19,14 @@ app_insight = FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
 app_insight.prepare(ctx_id=0)
 
 # Ladda KNN-modellen
-MODEL_PATH = "face_knn_arcface_interim.pkl"
+MODEL_PATH = "face_knn_arcface_new.pkl"
 with open(MODEL_PATH, "rb") as f:
     bundle = pickle.load(f)
 clf = bundle["model"]
 le = bundle["label_encoder"]
 
 # Standardinställningar
-THRESHOLD = 0.3
+THRESHOLD = 0.2
 FONT_PATH = "/nix/store/59p03gp3vzbrhd7xjiw3npgbdd68x3y0-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSans-Bold.ttf"  # Ändra om nödvändigt
 
 
@@ -131,4 +131,4 @@ def clear_temp():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
