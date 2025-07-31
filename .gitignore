@@ -11,7 +11,7 @@ crawls/*
 .scrapy/*
 doppelganger/__pycache__/*
 
-
+*.pkl
 face_extractor/arcface_work
 face_extractor/*.pkl
 face_extractor/results/*
