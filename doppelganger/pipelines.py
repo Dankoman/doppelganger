@@ -12,25 +12,26 @@ class PerformerImagePipeline(ImagesPipeline):
         adapter = ItemAdapter(item)
         performer = adapter.get("name") or "unknown"
         for idx, url in enumerate(adapter.get("image_urls", []), start=1):
-            # skicka med namn och index för numrering
             yield scrapy.Request(url, meta={"performer": performer, "idx": idx})
 
     def file_path(self, request, response=None, info=None, *, item=None):
-        # 1) Rensa modellens namn från specialtecken och överflödiga mellanslag
+        # 1) Rensa modellens namn för mappnamnet (med mellanslag kvar)
         raw_name = request.meta.get("performer", "unknown")
-        cleaned_name = re.sub(r"[^\w\s]", "", raw_name)        # Ta bort specialtecken
-        cleaned_name = re.sub(r"\s+", " ", cleaned_name).strip()  # Trimma mellanslag
+        cleaned_name = re.sub(r"[^\w\s-]", "", raw_name)  # Tillåt mellanslag och bindestreck
+        cleaned_name = re.sub(r"\s+", " ", cleaned_name).strip()
 
-        # 2) Ta bort mellanslag helt för prefixet
+        # 2) Ta bort mellanslag för prefix (filnamn)
         prefix = cleaned_name.replace(" ", "") or "unknown"
 
-        # 3) Hämta filändelse från URL
+        # 3) Hämta filändelse
         url_path = urlparse(request.url).path
-        ext = os.path.splitext(url_path)[1].lower() or ".jpg"
+        ext = os.path.splitext(url_path)[1].lower()
+        if ext not in [".jpg", ".jpeg", ".png", ".webp"]:
+            ext = ".jpg"  # fallback om otillförlitlig
 
-        # 4) Numrera bilder: idx finns i request.meta från get_media_requests
+        # 4) Bildindex
         idx = int(request.meta.get("idx", 0))
 
-        # 5) Bygg filnamn: FörnamnEfternamn-001.jpg
-        return f"{cleaned_name}/{prefix}-{idx:03d}{ext}"
+        # 5) Slutlig path
+        return os.path.join(cleaned_name, f"{prefix}-{idx:03d}{ext}")
 
