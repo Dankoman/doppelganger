@@ -24,18 +24,29 @@ class PerformerImagePipeline(ImagesPipeline):
         for idx, url in enumerate(adapter.get("image_urls", []), start=1):
             yield scrapy.Request(url, meta={"performer": performer, "idx": idx})
 
-    def file_path(self, request, response=None, info=None, *, item=None):
-        # 1) Rensa namn och bygg prefix
-        raw_name = request.meta.get("performer", "unknown")
-        cleaned_name = clean_name(raw_name)
-        prefix = cleaned_name.replace(" ", "") or "unknown"
+    def file_path(
+    self,
+    request: scrapy.http.Request,
+    response: Optional[scrapy.http.Response] = None,
+    info: Optional[object] = None,
+    *,
+    item: Optional[scrapy.Item] = None,
+) -> str:
+    raw_name = request.meta.get("performer", "unknown")
 
-        # 2) Hämta filändelse från URL
-        url_path = urlparse(request.url).path
-        ext = os.path.splitext(url_path)[1].lower() or ".jpg"
+    # Rensa bort specialtecken men behåll mellanslag
+    cleaned_name = re.sub(r"[^\w\s-]", "", raw_name)
+    cleaned_name = re.sub(r"\s+", " ", cleaned_name).strip()
 
-        # 3) Numrera bilder
-        idx = int(request.meta.get("idx", 0))
+    # Använd detta för prefix utan mellanslag
+    prefix = cleaned_name.replace(" ", "") or "unknown"
 
-        # 4) Returnera sökväg: "Claudia Valentine/ClaudiaValentine-001.jpg"
-        return os.path.join(cleaned_name, f"{prefix}-{idx:03d}{ext}")
+    # Filändelse
+    url_path = urlparse(request.url).path
+    ext = os.path.splitext(url_path)[1].lower() or ".jpg"
+
+    # Index för numrering
+    idx = int(request.meta.get("idx", 0))
+
+    # Spara i mapp med mellanslag i namnet
+    return f"{cleaned_name}/{prefix}-{idx:03d}{ext}"
