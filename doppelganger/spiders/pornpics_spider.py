@@ -51,13 +51,12 @@ class PornPicsImagesPipeline(ImagesPipeline):
     """Anpassad ImagesPipeline som döper filer efter modellen.
 
     Den här pipelinen används inte längre av spidern men behålls här för
-    framtida referens. Filnamn genereras från ``item['star']`` om
-    tillgängligt, annars faller den tillbaka på ``unknown``. Om du vill
-    använda denna klass måste du aktivera den i ``ITEM_PIPELINES`` i
-    projektinställningarna.
+    framtida referens. Filnamn genereras från ``item['name']`` eller ``item['star']``
+    om tillgängligt. Om du vill använda denna klass måste du aktivera den i
+    ``ITEM_PIPELINES`` i projektinställningarna.
     """
 
-    def __init__(self, *args, **kwargs):  # type: ignore[override]
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._counters: dict[str, int] = {}
 
@@ -65,16 +64,16 @@ class PornPicsImagesPipeline(ImagesPipeline):
         self,
         request: scrapy.http.Request,
         response: Optional[scrapy.http.Response] = None,
-        info: Optional[scrapy.pipelines.media.MediaPipelineStats] = None,
+        info: Optional[object] = None,
         *,
         item: Optional[scrapy.Item] = None,
     ) -> str:
         star_name = "unknown"
         if item:
             # Prio: använd name om tillgängligt, annars star
-            if "name" in item:
+            if "name" in item and item["name"]:
                 star_name = str(item["name"]).replace(" ", "").replace("/", "-")
-            elif "star" in item:
+            elif "star" in item and item["star"]:
                 star_name = str(item["star"]).replace(" ", "").replace("/", "-")
         index = self._counters.get(star_name, 0) + 1
         self._counters[star_name] = index
@@ -101,40 +100,23 @@ class PornpicsSpider(scrapy.Spider):
     ]
 
     # Anpassade inställningar: använd projektets PerformerImagePipeline för att
-    # generera filnamn (förnamnEfternamn-001.jpg osv.) och spara bilderna i
-    # katalogen från doppelganger/settings.py. Justera IMAGES_STORE vid behov.
+    # generera filnamn och spara bilderna i katalogen från settings.py. Justera
+    # IMAGES_STORE vid behov.
     custom_settings = {
         "ITEM_PIPELINES": {
             "doppelganger.pipelines.PerformerImagePipeline": 1,
         },
-        # Sökvägen där bilder lagras. Denna bör matcha IMAGES_STORE i dina
-        # projektinställningar för konsekvens. Standardvärdet är
-        # "/root/doppelganger/images-ppic" enligt settings.py.
         "IMAGES_STORE": "/root/doppelganger/images-ppic",
-        # Minska loggningsnivån för att inte spamma utdata
         "LOG_LEVEL": "INFO",
     }
 
     def parse(self, response: scrapy.http.Response) -> Iterable[scrapy.Request]:
-        """Parsa en listsida och generera requests till varje relevant profil.
-
-        På listsidan finns namn på porrstjärnor med antal bilder inom
-        parentes. Den här metoden extraherar varje länk, läser siffran i
-        parentesen och följer bara länkar där antalet är större än tre. För
-        att undvika att följa andra länkar (t.ex. navigation eller reklam)
-        filtreras bara länkar vars ``href`` börjar med ``/pornstars/``.
-        """
-        # Hämta alla ankar‑element på sidan
+        """Parsa en listsida och generera requests till varje relevant profil."""
         for link in response.css("a"):
             href: Optional[str] = link.attrib.get("href")
-            if not href:
-                continue
-            # Vi är bara intresserade av länkar som leder till en pornstars‑profil
-            # De börjar med '/pornstars/' enligt sidans struktur.
-            if not href.startswith("/pornstars/"):
+            if not href or not href.startswith("/pornstars/"):
                 continue
 
-            # Extrahera hela texten i länken, inklusive eventuella barnnoder.
             text_parts = link.css("::text").getall()
             full_text = "".join(part.strip() for part in text_parts if part.strip())
             if not full_text:
@@ -144,24 +126,17 @@ class PornpicsSpider(scrapy.Spider):
             match = re.search(r"\(([^)]+)\)", full_text)
             if not match:
                 continue
-            # Ta bort eventuella kommatecken i siffran och konvertera till int
             try:
                 count = int(match.group(1).replace(",", ""))
             except ValueError:
                 continue
 
-            # Hoppa över profiler med tre eller färre bilder
             if count <= 3:
                 continue
 
-            # Följ länken till profilsidan. Använd response.urljoin för att bygga
-            # absolut URL.
             profile_url = response.urljoin(href)
-            # Star‑namnet är texten före parentesen
+            # Namnet är texten före parentesen
             star_name = full_text[: full_text.rfind("(")].strip()
-            # Skicka med modellens namn i meta under nyckeln "name".
-            # Detta används i parse_profile för att sätta item['name'] och
-            # av pipelinen för att generera filnamn.
             yield scrapy.Request(
                 profile_url,
                 callback=self.parse_profile,
@@ -169,27 +144,14 @@ class PornpicsSpider(scrapy.Spider):
             )
 
     def parse_profile(self, response: scrapy.http.Response) -> Iterable[PornpicsItem]:
-        """Extrahera bildlänkar från en profilsida.
-
-        Den här metoden letar efter alla ``<a>`` med CSS‑klassen ``rel-link``.
-        För varje länk ignoreras de som leder till kanaler (``/channels/`` i
-        ``href``). Därefter extraheras bildlänken från ``data-src`` eller
-        ``src``-attributet i ``<img>``. Högst 15 bilder per profil kommer att
-        genereras som ``PornpicsItem``.
-        """
-        # Hämta modellens namn från meta (satt i parse()). Använd "name" som nyckel.
+        """Extrahera bildlänkar från en profilsida."""
         star_name: str = response.meta.get("name", "")
         image_count = 0
-        # Loopa igenom alla relevanta ankar‑element
         for anchor in response.css("a.rel-link"):
             href: Optional[str] = anchor.attrib.get("href")
-            if not href:
-                continue
-            # Hoppa över länkar till kanaler
-            if "/channels/" in href:
+            if not href or "/channels/" in href:
                 continue
 
-            # Hämta bildens URL, helst från data-src (lazy loading)
             img_url = anchor.css("img::attr(data-src)").get() or anchor.css(
                 "img::attr(src)"
             ).get()
@@ -197,7 +159,6 @@ class PornpicsSpider(scrapy.Spider):
                 continue
 
             item = PornpicsItem()
-            # Sätt både name och star för att vara kompatibel med PerformerImagePipeline
             item["name"] = star_name
             item["star"] = star_name
             item["image_urls"] = [img_url]
