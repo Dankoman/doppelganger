@@ -1,11 +1,16 @@
-# doppelganger/spiders/pornpics.py
+"""
+Spider för att hämta bilder från PornPics.
+"""
+
 import re
 from typing import Iterable, Optional
+
 import scrapy
+from itemadapter import ItemAdapter
 
 
 class PornpicsItem(scrapy.Item):
-    """Item med bild-URL och modellnamn."""
+    """Item med bild-URL och namn."""
     name = scrapy.Field()
     star = scrapy.Field()
     image_urls = scrapy.Field()
@@ -24,6 +29,7 @@ class PornpicsSpider(scrapy.Spider):
 
     custom_settings = {
         "ITEM_PIPELINES": {
+            # Peka på vår nya pipeline
             "doppelganger.pipelines.PerformerImagePipeline": 1,
         },
         "IMAGES_STORE": "/root/doppelganger/images-ppic",
@@ -31,46 +37,48 @@ class PornpicsSpider(scrapy.Spider):
     }
 
     def parse(self, response: scrapy.http.Response) -> Iterable[scrapy.Request]:
-        """Parsa list-sida och följ profiler med fler än 3 bilder."""
+        """Parsa en listsida och hämta profiler med fler än tre bilder."""
         for link in response.css("a"):
-            href = link.attrib.get("href")
+            href: Optional[str] = link.attrib.get("href")
             if not href or not href.startswith("/pornstars/"):
                 continue
 
-            # Extrahera text och räkna bilder
-            text = "".join(
-                part.strip() for part in link.css("::text").getall() if part.strip()
-            )
-            match = re.search(r"\(([\d,]+)\)", text)
+            text_parts = link.css("::text").getall()
+            full_text = "".join(part.strip() for part in text_parts if part.strip())
+            if not full_text:
+                continue
+
+            match = re.search(r"\(([^)]+)\)", full_text)
             if not match:
                 continue
             try:
                 count = int(match.group(1).replace(",", ""))
             except ValueError:
                 continue
+
             if count <= 3:
                 continue
 
-            star_name = text[: text.rfind("(")].strip()
+            profile_url = response.urljoin(href)
+            star_name = full_text[: full_text.rfind("(")].strip()
             yield scrapy.Request(
-                response.urljoin(href),
+                profile_url,
                 callback=self.parse_profile,
                 meta={"name": star_name},
             )
 
     def parse_profile(self, response: scrapy.http.Response) -> Iterable[PornpicsItem]:
-        """Extrahera upp till 15 bilder från en profil-sida."""
-        star_name = response.meta.get("name", "")
-        count = 0
+        """Extrahera bilder från en profilsida."""
+        star_name: str = response.meta.get("name", "")
+        image_count = 0
         for anchor in response.css("a.rel-link"):
-            href = anchor.attrib.get("href")
+            href: Optional[str] = anchor.attrib.get("href")
             if not href or "/channels/" in href:
                 continue
 
-            img_url = (
-                anchor.css("img::attr(data-src)").get()
-                or anchor.css("img::attr(src)").get()
-            )
+            img_url = anchor.css("img::attr(data-src)").get() or anchor.css(
+                "img::attr(src)"
+            ).get()
             if not img_url:
                 continue
 
@@ -80,6 +88,6 @@ class PornpicsSpider(scrapy.Spider):
             item["image_urls"] = [img_url]
             yield item
 
-            count += 1
-            if count >= 15:
+            image_count += 1
+            if image_count >= 15:
                 break
