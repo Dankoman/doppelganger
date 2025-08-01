@@ -1,7 +1,3 @@
-"""
-Spider för att hämta bilder från PornPics.
-"""
-
 import re
 from typing import Iterable, Optional
 
@@ -29,7 +25,6 @@ class PornpicsSpider(scrapy.Spider):
 
     custom_settings = {
         "ITEM_PIPELINES": {
-            # Peka på vår nya pipeline
             "doppelganger.pipelines.PerformerImagePipeline": 1,
         },
         "IMAGES_STORE": "/root/doppelganger/images-ppic",
@@ -38,21 +33,20 @@ class PornpicsSpider(scrapy.Spider):
 
     def parse(self, response: scrapy.http.Response) -> Iterable[scrapy.Request]:
         """Parsa en listsida och hämta profiler med fler än tre bilder."""
-        for link in response.css("a"):
+        for link in response.css("a"): 
             href: Optional[str] = link.attrib.get("href")
             if not href or not href.startswith("/pornstars/"):
                 continue
 
-            text_parts = link.css("::text").getall()
-            full_text = "".join(part.strip() for part in text_parts if part.strip())
-            if not full_text:
+            text = "".join(part.strip() for part in link.css("::text").getall() if part.strip())
+            if not text:
                 continue
 
-            match = re.search(r"\(([^)]+)\)", full_text)
-            if not match:
+            m = re.search(r"\(([^)]+)\)", text)
+            if not m:
                 continue
             try:
-                count = int(match.group(1).replace(",", ""))
+                count = int(m.group(1).replace(",", ""))
             except ValueError:
                 continue
 
@@ -60,7 +54,7 @@ class PornpicsSpider(scrapy.Spider):
                 continue
 
             profile_url = response.urljoin(href)
-            star_name = full_text[: full_text.rfind("(")].strip()
+            star_name = text[: text.rfind("(")].strip()
             yield scrapy.Request(
                 profile_url,
                 callback=self.parse_profile,
@@ -68,17 +62,19 @@ class PornpicsSpider(scrapy.Spider):
             )
 
     def parse_profile(self, response: scrapy.http.Response) -> Iterable[PornpicsItem]:
-        """Extrahera bilder från en profilsida."""
+        """Extrahera bilder från en profilsida, utan att följa galleri-länkar."""
         star_name: str = response.meta.get("name", "")
         image_count = 0
-        for anchor in response.css("a.rel-link"):
+        for anchor in response.css("a.rel-link"):  # välj bilderelaterade länkar
+            # filtrera bort kanal- och galleri-länkar
             href: Optional[str] = anchor.attrib.get("href")
             if not href or "/channels/" in href:
                 continue
+            if anchor.css("span.g-count"):  # galleri-länk med g-count
+                continue
 
-            img_url = anchor.css("img::attr(data-src)").get() or anchor.css(
-                "img::attr(src)"
-            ).get()
+            # extrahera bild-URL
+            img_url = anchor.css("img::attr(data-src)").get() or anchor.css("img::attr(src)").get()
             if not img_url:
                 continue
 
