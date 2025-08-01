@@ -11,7 +11,12 @@ from scrapy.item import Item, Field
 class DoppelgangerItem(Item):
     # define the fields for your item here like:
     name = Field()
-
+    image_urls = scrapy.Field()
+    images = scrapy.Field()
+    bio = scrapy.Field()
+    gallery_urls = scrapy.Field()
+    aliases = scrapy.Field()
+    source_url = scrapy.Field()
 
 class Actress(Item):
     name = Field()

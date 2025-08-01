@@ -1,0 +1,53 @@
+services:
+  doppelganger-scraper:
+    build: .
+    volumes:
+      - ./crawls:/app/crawls
+      - ./images:/app/images
+      - ./logs:/app/logs
+      - ./profile_urls.txt:/app/profile_urls.txt:ro
+    environment:
+      - SCRAPY_SETTINGS_MODULE=doppelganger.settings
+      - PYTHONPATH=/app
+    networks:
+      - scraper-network
+    depends_on:
+      - camoufox-server
+
+  camoufox-scraper:
+    build: .
+    volumes:
+      - ./crawls:/app/crawls
+      - ./images:/app/images
+      - ./logs:/app/logs
+      - ./profile_urls.txt:/app/profile_urls.txt:ro
+    environment:
+      - SCRAPY_SETTINGS_MODULE=doppelganger.settings
+      - PYTHONPATH=/app
+      - CAMOUFOX_ENABLED=true
+      - CAMOUFOX_HOST=camoufox-server
+      - CAMOUFOX_PORT=4444
+    networks:
+      - scraper-network
+    depends_on:
+      - camoufox-server
+
+  camoufox-server:
+    image: selenium/standalone-firefox:latest
+    ports:
+      - "9224:4444"
+    environment:
+      - SE_NODE_MAX_SESSIONS=2
+      - SE_NODE_SESSION_TIMEOUT=300
+    shm_size: 2gb
+    networks:
+      - scraper-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4444/wd/hub/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  scraper-network:
+    driver: bridge
