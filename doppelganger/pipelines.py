@@ -33,4 +33,5 @@ class PerformerImagePipeline(ImagesPipeline):
         idx = int(request.meta.get("idx", 0))
 
         # 5) Slutlig path
-        return f"{cleaned_name}/{prefix}-{idx:03d}{ext}"
+        return os.path.join(cleaned_name, f"{prefix}-{idx:03d}{ext}")
+
