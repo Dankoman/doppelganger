@@ -1,4 +1,3 @@
-# doppelganger/pipelines.py
 import os
 import re
 import unicodedata
@@ -8,51 +7,43 @@ import scrapy
 from itemadapter import ItemAdapter
 from scrapy.pipelines.images import ImagesPipeline
 
+
 def clean_name(name: str) -> str:
-    """
-    Normalisera och rensa modellens namn, men behåll mellanslag.
-    """
-    # Normalisera Unicode (så Å ≠ A)
+    # Normalisera Unicode och ta bort ogiltiga filsystemtecken men behåll mellanslag
     name = unicodedata.normalize("NFKD", name)
-    # Ta bort ogiltiga filsystemtecken men behåll mellanslag och bindestreck
     name = re.sub(r"[^\w\s-]", "", name, flags=re.UNICODE)
-    # Ersätt flera mellanslag med ett enda mellanslag
     return re.sub(r"\s+", " ", name).strip()
 
 
 class PerformerImagePipeline(ImagesPipeline):
-    """Döp varje bild med FörnamnEfternamn-XXX.jpg i undermapp med mellanslag i namnet."""
+    """Döp varje bild med Förnamn Efternamn-XXX.jpg i undermapp med samma namn."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._counters: dict[str, int] = {}
 
     def get_media_requests(self, item, info):
         adapter = ItemAdapter(item)
         performer = adapter.get("name") or "unknown"
-        for idx, url in enumerate(adapter.get("image_urls", []), start=1):
-            yield scrapy.Request(url, meta={"performer": performer, "idx": idx})
+        cleaned = clean_name(performer)
+        for url in adapter.get("image_urls", []):
+            # Skicka med endast modellens namn; idx hanteras av pipeline
+            yield scrapy.Request(url, meta={"performer": cleaned})
 
-    def file_path(
-        self,
-        request: scrapy.http.Request,
-        response: scrapy.http.Response = None,
-        info: object = None,
-        *,
-        item: scrapy.Item = None,
-    ) -> str:
-        # 1) Rensa modellens namn – behåll mellanslag
+    def file_path(self, request, response=None, info=None, *, item=None) -> str:
         raw_name = request.meta.get("performer", "unknown")
         cleaned_name = clean_name(raw_name)
 
-        # 2) Prefix utan mellanslag (används i filnamnet)
-        prefix = cleaned_name.replace(" ", "") or "unknown"
+        # Uppdatera räknare per modell
+        count = self._counters.get(cleaned_name, 0) + 1
+        self._counters[cleaned_name] = count
 
-        # 3) Filändelse från URL
+        # Prefix utan mellanslag
+        prefix = cleaned_name.replace(" ", "") or "unknown"
+        # Hämta filändelse
         url_path = urlparse(request.url).path
         ext = os.path.splitext(url_path)[1].lower() or ".jpg"
 
-        # 4) Index för numrering från meta
-        idx = int(request.meta.get("idx", 0))
-
-        # 5) Skapa filnamn
-        filename = f"{prefix}-{idx:03d}{ext}"
-
-        # 6) Spara i undermapp med mellanslag i mappnamnet
+        filename = f"{prefix}-{count:03d}{ext}"
+        # Spara i mapp med mellanslag
         return f"{cleaned_name}/{filename}"
