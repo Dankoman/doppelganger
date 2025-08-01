@@ -25,28 +25,26 @@ class PerformerImagePipeline(ImagesPipeline):
             yield scrapy.Request(url, meta={"performer": performer, "idx": idx})
 
     def file_path(
-    self,
-    request: scrapy.http.Request,
-    response: Optional[scrapy.http.Response] = None,
-    info: Optional[object] = None,
-    *,
-    item: Optional[scrapy.Item] = None,
-) -> str:
-    raw_name = request.meta.get("performer", "unknown")
+        self,
+        request: scrapy.http.Request,
+        response=None,
+        info=None,
+        *,
+        item=None
+    ) -> str:
+        raw_name = request.meta.get("performer", "unknown")
 
-    # Rensa bort specialtecken men behåll mellanslag
-    cleaned_name = re.sub(r"[^\w\s-]", "", raw_name)
-    cleaned_name = re.sub(r"\s+", " ", cleaned_name).strip()
+        # Behåll mellanslag i mappnamn
+        folder_name = clean_name(raw_name)
 
-    # Använd detta för prefix utan mellanslag
-    prefix = cleaned_name.replace(" ", "") or "unknown"
+        # Ta bort mellanslag i prefix
+        prefix = folder_name.replace(" ", "") or "unknown"
 
-    # Filändelse
-    url_path = urlparse(request.url).path
-    ext = os.path.splitext(url_path)[1].lower() or ".jpg"
+        # Filändelse
+        url_path = urlparse(request.url).path
+        ext = os.path.splitext(url_path)[1].lower() or ".jpg"
 
-    # Index för numrering
-    idx = int(request.meta.get("idx", 0))
+        # Index för numrering
+        idx = int(request.meta.get("idx", 0))
 
-    # Spara i mapp med mellanslag i namnet
-    return f"{cleaned_name}/{prefix}-{idx:03d}{ext}"
+        return f"{folder_name}/{prefix}-{idx:03d}{ext}"
