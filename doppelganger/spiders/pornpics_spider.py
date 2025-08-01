@@ -24,19 +24,61 @@ import re
 from typing import Iterable, Optional
 
 import scrapy
+from scrapy.pipelines.images import ImagesPipeline  # för anpassad namngivning
 
 
 class PornpicsItem(scrapy.Item):
     """Definierar de fält som används av spidern.
 
     `image_urls` kommer att läsas av Scrapy’s ImagesPipeline och `images`
-    innehåller resultatmetadata efter nedladdning. Fältet `star` används för
-    att spara namnet på modellen.
+    innehåller resultatmetadata efter nedladdning. För att vår
+    ``PerformerImagePipeline`` ska kunna sätta rätt filnamn behöver
+    objektet exponera fältet ``name`` som innehåller modellens namn. För den
+    som vill spara namnet separat finns även fältet ``star`` kvar.
     """
 
+    # Pipelines kommer att läsa detta fält för att generera filnamn
+    name = scrapy.Field()
+    # Behåll även star som alias, men det används inte av pipelinen
     star = scrapy.Field()
+    # URL:er till bilder som ska laddas ned av ImagesPipeline
     image_urls = scrapy.Field()
+    # Metadata om nedladdade bilder
     images = scrapy.Field()
+
+
+class PornPicsImagesPipeline(ImagesPipeline):
+    """Anpassad ImagesPipeline som döper filer efter modellen.
+
+    Den här pipelinen används inte längre av spidern men behålls här för
+    framtida referens. Filnamn genereras från ``item['star']`` om
+    tillgängligt, annars faller den tillbaka på ``unknown``. Om du vill
+    använda denna klass måste du aktivera den i ``ITEM_PIPELINES`` i
+    projektinställningarna.
+    """
+
+    def __init__(self, *args, **kwargs):  # type: ignore[override]
+        super().__init__(*args, **kwargs)
+        self._counters: dict[str, int] = {}
+
+    def file_path(
+        self,
+        request: scrapy.http.Request,
+        response: Optional[scrapy.http.Response] = None,
+        info: Optional[scrapy.pipelines.media.MediaPipelineStats] = None,
+        *,
+        item: Optional[scrapy.Item] = None,
+    ) -> str:
+        star_name = "unknown"
+        if item:
+            # Prio: använd name om tillgängligt, annars star
+            if "name" in item:
+                star_name = str(item["name"]).replace(" ", "").replace("/", "-")
+            elif "star" in item:
+                star_name = str(item["star"]).replace(" ", "").replace("/", "-")
+        index = self._counters.get(star_name, 0) + 1
+        self._counters[star_name] = index
+        return f"{star_name}-{index:03d}.jpg"
 
 
 class PornpicsSpider(scrapy.Spider):
@@ -58,15 +100,20 @@ class PornpicsSpider(scrapy.Spider):
         for letter in range(ord("a"), ord("z") + 1)
     ]
 
-    # Anpassade inställningar: aktivera ImagesPipeline och definiera var
-    # bilderna ska sparas. Justera IMAGES_STORE efter behov.
-    #custom_settings = {
-    #    "ITEM_PIPELINES": {"scrapy.pipelines.images.ImagesPipeline": 1},
-    #    # Standardmapp för nedladdade bilder
-    #    "IMAGES_STORE": "downloaded_images/pornpics",
-    #    # Minska loggningsnivån för att inte spamma utdata
-    #    "LOG_LEVEL": "INFO",
-    #}
+    # Anpassade inställningar: använd projektets PerformerImagePipeline för att
+    # generera filnamn (förnamnEfternamn-001.jpg osv.) och spara bilderna i
+    # katalogen från doppelganger/settings.py. Justera IMAGES_STORE vid behov.
+    custom_settings = {
+        "ITEM_PIPELINES": {
+            "doppelganger.pipelines.PerformerImagePipeline": 1,
+        },
+        # Sökvägen där bilder lagras. Denna bör matcha IMAGES_STORE i dina
+        # projektinställningar för konsekvens. Standardvärdet är
+        # "/root/doppelganger/images-ppic" enligt settings.py.
+        "IMAGES_STORE": "/root/doppelganger/images-ppic",
+        # Minska loggningsnivån för att inte spamma utdata
+        "LOG_LEVEL": "INFO",
+    }
 
     def parse(self, response: scrapy.http.Response) -> Iterable[scrapy.Request]:
         """Parsa en listsida och generera requests till varje relevant profil.
@@ -112,6 +159,9 @@ class PornpicsSpider(scrapy.Spider):
             profile_url = response.urljoin(href)
             # Star‑namnet är texten före parentesen
             star_name = full_text[: full_text.rfind("(")].strip()
+            # Skicka med modellens namn i meta under nyckeln "name".
+            # Detta används i parse_profile för att sätta item['name'] och
+            # av pipelinen för att generera filnamn.
             yield scrapy.Request(
                 profile_url,
                 callback=self.parse_profile,
@@ -127,7 +177,8 @@ class PornpicsSpider(scrapy.Spider):
         ``src``-attributet i ``<img>``. Högst 15 bilder per profil kommer att
         genereras som ``PornpicsItem``.
         """
-        star_name: str = response.meta.get("star", "")
+        # Hämta modellens namn från meta (satt i parse()). Använd "name" som nyckel.
+        star_name: str = response.meta.get("name", "")
         image_count = 0
         # Loopa igenom alla relevanta ankar‑element
         for anchor in response.css("a.rel-link"):
@@ -146,6 +197,8 @@ class PornpicsSpider(scrapy.Spider):
                 continue
 
             item = PornpicsItem()
+            # Sätt både name och star för att vara kompatibel med PerformerImagePipeline
+            item["name"] = star_name
             item["star"] = star_name
             item["image_urls"] = [img_url]
             yield item
