@@ -60,13 +60,13 @@ class PornpicsSpider(scrapy.Spider):
 
     # Anpassade inställningar: aktivera ImagesPipeline och definiera var
     # bilderna ska sparas. Justera IMAGES_STORE efter behov.
-    custom_settings = {
-        "ITEM_PIPELINES": {"scrapy.pipelines.images.ImagesPipeline": 1},
-        # Standardmapp för nedladdade bilder
-        "IMAGES_STORE": "downloaded_images/pornpics",
-        # Minska loggningsnivån för att inte spamma utdata
-        "LOG_LEVEL": "INFO",
-    }
+    #custom_settings = {
+    #    "ITEM_PIPELINES": {"scrapy.pipelines.images.ImagesPipeline": 1},
+    #    # Standardmapp för nedladdade bilder
+    #    "IMAGES_STORE": "downloaded_images/pornpics",
+    #    # Minska loggningsnivån för att inte spamma utdata
+    #    "LOG_LEVEL": "INFO",
+    #}
 
     def parse(self, response: scrapy.http.Response) -> Iterable[scrapy.Request]:
         """Parsa en listsida och generera requests till varje relevant profil.
@@ -115,7 +115,7 @@ class PornpicsSpider(scrapy.Spider):
             yield scrapy.Request(
                 profile_url,
                 callback=self.parse_profile,
-                meta={"star": star_name},
+                meta={"name": star_name},
             )
 
     def parse_profile(self, response: scrapy.http.Response) -> Iterable[PornpicsItem]:
