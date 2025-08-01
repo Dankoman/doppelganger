@@ -94,7 +94,7 @@ ITEM_PIPELINES = {
     "doppelganger.pipelines.PerformerImagePipeline": 1,
 }
 
-IMAGES_STORE = '/home/marqs/Bilder/ppics'
+IMAGES_STORE = '/root/doppelganger/images-ppic'
 
 # Enable and configure the AutoThrottle extension (mycket konservativt)
 AUTOTHROTTLE_ENABLED = True
