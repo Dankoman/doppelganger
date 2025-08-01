@@ -32,4 +32,5 @@ class PerformerImagePipeline(ImagesPipeline):
         idx = int(request.meta.get("idx", 0))
 
         # 5) Bygg filnamn: FörnamnEfternamn-001.jpg
-        return f"{prefix}-{idx:03d}{ext}"
+        return f"{cleaned_name}/{prefix}-{idx:03d}{ext}"
+
