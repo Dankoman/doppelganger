@@ -33,7 +33,7 @@ TELNETCONSOLE_ENABLED = False
 MEDIA_ALLOW_REDIRECTS = True
 
 # Aktivera jobb-katalog för återupptagning
-JOBDIR = 'crawls/book-3'
+JOBDIR = 'crawls/book-ppics'
 
 # Override the default request headers med mer realistiska värden
 DEFAULT_REQUEST_HEADERS = {
@@ -94,7 +94,7 @@ ITEM_PIPELINES = {
     "doppelganger.pipelines.PerformerImagePipeline": 1,
 }
 
-IMAGES_STORE = '/root/doppelganger/images'
+IMAGES_STORE = '/home/marqs/Bilder/ppics'
 
 # Enable and configure the AutoThrottle extension (mycket konservativt)
 AUTOTHROTTLE_ENABLED = True
