@@ -1,149 +1,222 @@
-"""
-Spider för att hämta bilder från PornPics.
+# -*- coding: utf-8 -*-
 
-Den här Scrapy‑spidern besöker listorna över porrstjärnor på
-`https://www.pornpics.com/pornstars/list/a/` till
-`https://www.pornpics.com/pornstars/list/z/`. På varje listsida letar den upp
-länkar till individuella profiler (URL:er som börjar med `/pornstars/`) och
-kontrollerar antalet bilder som anges inom parentes efter namnet. Endast
-profiler med fler än tre bilder kommer att crawlas. För varje profil samlar
-spidern upp till 15 bildlänkar från element av typen:
+# Enhanced Scrapy settings for doppelganger project with advanced anti-blocking
 
-    <a class="rel-link" href="…" ...><img data-src="…" /></a>
+BOT_NAME = 'doppelganger'
 
-Länkar vars `href` innehåller `/channels/` filtreras bort. Varje bild URL
-skickas till Scrapy’s inbyggda ImagesPipeline via fältet `image_urls` för
-nedladdning. För att spidern ska ladda ned bilderna behöver `IMAGES_STORE`
-ange en mapp i projektets inställningar eller i `custom_settings` nedan.
+SPIDER_MODULES = ['doppelganger.spiders']
+NEWSPIDER_MODULE = 'doppelganger.spiders'
 
-Observera att du behöver lägga till spidern i ditt Scrapy‑projekt och
-se till att `scrapy.pipelines.images.ImagesPipeline` är aktiverad.
-"""
+# Crawl responsibly by identifying yourself (and your website) on the user-agent
+USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 
-import re
-from typing import Iterable, Optional
+# Obey robots.txt rules (disabled for scraping)
+ROBOTSTXT_OBEY = False
 
-import scrapy
-from scrapy.pipelines.images import ImagesPipeline  # för anpassad namngivning
+# Configure maximum concurrent requests performed by Scrapy (very conservative)
+CONCURRENT_REQUESTS = 1
 
-class PornpicsItem(scrapy.Item):
-    """
-    Definierar de fält som används av spidern.
-    `image_urls` kommer att läsas av Scrapy’s ImagesPipeline och `images`
-    innehåller resultatmetadata efter nedladdning. För att vår
-    ``PerformerImagePipeline`` ska kunna sätta rätt filnamn behöver
-    objektet exponera fältet ``name`` som innehåller modellens namn.
-    """
+# Configure a delay for requests for the same website
+DOWNLOAD_DELAY = 5.0  # Ökat till 5 sekunder
+RANDOMIZE_DOWNLOAD_DELAY = 0.5  # Randomisera ±50%
 
-    name = scrapy.Field()
-    star = scrapy.Field()
-    image_urls = scrapy.Field()
-    images = scrapy.Field()
+# The download delay setting will honor only one of:
+CONCURRENT_REQUESTS_PER_DOMAIN = 1
+CONCURRENT_REQUESTS_PER_IP = 1
 
-class PornPicsImagesPipeline(ImagesPipeline):
-    """
-    Anpassad ImagesPipeline som döper filer efter modellen.
+# Disable cookies (enabled by default) - vi hanterar detta manuellt
+COOKIES_ENABLED = True
 
-    Den här pipelinen används inte längre av spidern men behålls här för
-    framtida referens. Filnamn genereras från ``item['name']`` eller ``item['star']``
-    om tillgängligt. Om du vill använda denna klass måste du aktivera den i
-    ``ITEM_PIPELINES`` i projektinställningarna.
-    """
+# Disable Telnet Console (enabled by default)
+TELNETCONSOLE_ENABLED = False
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._counters: dict[str, int] = {}
+MEDIA_ALLOW_REDIRECTS = True
 
-    def file_path(
-        self,
-        request: scrapy.http.Request,
-        response: Optional[scrapy.http.Response] = None,
-        info: Optional[object] = None,
-        *,
-        item: Optional[scrapy.Item] = None,
-    ) -> str:
-        star_name = "unknown"
-        if item:
-            if "name" in item and item["name"]:
-                star_name = str(item["name"]).replace(" ", "").replace("/", "-")
-            elif "star" in item and item["star"]:
-                star_name = str(item["star"]).replace(" ", "").replace("/", "-")
-        index = self._counters.get(star_name, 0) + 1
-        self._counters[star_name] = index
-        return f"{star_name}-{index:03d}.jpg"
+# Aktivera jobb-katalog för återupptagning
+JOBDIR = 'crawls/book-ppics'
 
-class PornpicsSpider(scrapy.Spider):
-    """Spindel som crawlar PornPics listor och profiler."""
+# Override the default request headers med mer realistiska värden
+DEFAULT_REQUEST_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9,sv-SE;q=0.8,sv;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br",
+    "DNT": "1",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Cache-Control": "max-age=0",
+    "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+}
 
-    name = "pornpics"
-    allowed_domains = ["pornpics.com"]
-    start_urls = [
-        f"https://www.pornpics.com/pornstars/list/{chr(letter)}/"
-        for letter in range(ord("a"), ord("z") + 1)
-    ]
+# Enable or disable spider middlewares
+SPIDER_MIDDLEWARES = {
+    'doppelganger.middlewares.DoppelgangerSpiderMiddleware': 543,
+}
 
-    # Använd projektets PerformerImagePipeline och spara bilder i images-ppic.
-    custom_settings = {
-        "ITEM_PIPELINES": {
-            "doppelganger.pipelines.PerformerImagePipeline": 1,
-        },
-        "IMAGES_STORE": "/root/doppelganger/images-ppic",
-        "LOG_LEVEL": "INFO",
-    }
+# Enable or disable downloader middlewares med förbättrade klasser
+DOWNLOADER_MIDDLEWARES = {
+    'doppelganger.middlewares.EnhancedUserAgentMiddleware': 400,
+    'doppelganger.middlewares_proxy.ProxyRotatorMiddleware': None, #500,  # Lägg till proxy middleware
+    'doppelganger.middlewares.AdvancedAntiBlockingMiddleware': 543,
+    'doppelganger.middlewares.EnhancedRetryMiddleware': 550,
+}
 
-    def parse(self, response: scrapy.http.Response) -> Iterable[scrapy.Request]:
-        """Parsa en listsida och generera requests till varje relevant profil."""
-        for link in response.css("a"):
-            href: Optional[str] = link.attrib.get("href")
-            if not href or not href.startswith("/pornstars/"):
-                continue
+# Anti-blocking inställningar (förbättrade)
+ANTIBLOCK_ENABLED = True
+ANTIBLOCK_DELAY_RANGE = (3, 10)  # Längre fördröjningar
 
-            text_parts = link.css("::text").getall()
-            full_text = "".join(part.strip() for part in text_parts if part.strip())
-            if not full_text:
-                continue
+# Proxy-inställningar
+PROXY_LIST_PATH = '/home/ubuntu/doppelganger/proxy/proxies.txt'  # Sökväg till proxy-filen
+PROXY_ENABLED = False
 
-            match = re.search(r"\(([^)]+)\)", full_text)
-            if not match:
-                continue
 
-            try:
-                count = int(match.group(1).replace(",", ""))
-            except ValueError:
-                continue
+# Retry-inställningar
+RETRY_ENABLED = True
+RETRY_TIMES = 5  # Fler försök
+RETRY_HTTP_CODES = [500, 502, 503, 504, 408, 429, 403]  # Inkludera 403
+RETRY_PRIORITY_ADJUST = -1
 
-            if count <= 3:
-                continue
+# Download timeout
+DOWNLOAD_TIMEOUT = 30
 
-            profile_url = response.urljoin(href)
-            star_name = full_text[: full_text.rfind("(")].strip()
-            yield scrapy.Request(
-                profile_url,
-                callback=self.parse_profile,
-                meta={"name": star_name},
-            )
+# Enable or disable extensions
+EXTENSIONS = {
+    'scrapy.extensions.telnet.TelnetConsole': None,
+}
 
-    def parse_profile(self, response: scrapy.http.Response) -> Iterable[PornpicsItem]:
-        """Extrahera bildlänkar från en profilsida."""
-        star_name: str = response.meta.get("name", "")
-        image_count = 0
-        for anchor in response.css("a.rel-link"):
-            href: Optional[str] = anchor.attrib.get("href")
-            if not href or "/channels/" in href:
-                continue
+# Configure item pipelines
+ITEM_PIPELINES = {
+    "doppelganger.pipelines.PerformerImagePipeline": 1,
+}
 
-            img_url = anchor.css("img::attr(data-src)").get() or anchor.css(
-                "img::attr(src)"
-            ).get()
-            if not img_url:
-                continue
+IMAGES_STORE = '/root/doppelganger/images-ppic'
 
-            item = PornpicsItem()
-            item["name"] = star_name
-            item["star"] = star_name
-            item["image_urls"] = [img_url]
-            yield item
+# Enable and configure the AutoThrottle extension (mycket konservativt)
+AUTOTHROTTLE_ENABLED = True
+AUTOTHROTTLE_START_DELAY = 5  # Starta med 5 sekunder
+AUTOTHROTTLE_MAX_DELAY = 60   # Max 60 sekunder
+AUTOTHROTTLE_TARGET_CONCURRENCY = 0.5  # Mycket låg concurrency
+AUTOTHROTTLE_DEBUG = True  # Visa throttling-statistik
 
-            image_count += 1
-            if image_count >= 15:
-                break
+# Enable and configure HTTP caching (för att minska requests)
+HTTPCACHE_ENABLED = True
+HTTPCACHE_EXPIRATION_SECS = 3600  # Cache i 1 timme
+HTTPCACHE_DIR = 'httpcache'
+HTTPCACHE_IGNORE_HTTP_CODES = [403, 404, 500, 503]
+
+# Logging
+LOG_LEVEL = 'INFO'
+
+# Request fingerprinting (för att undvika duplicates)
+DUPEFILTER_DEBUG = True
+
+# Memory usage extension
+MEMUSAGE_ENABLED = True
+MEMUSAGE_LIMIT_MB = 2048
+MEMUSAGE_WARNING_MB = 1024
+
+# Close spider on various conditions
+CLOSESPIDER_TIMEOUT = 3600  # Stäng efter 1 timme
+CLOSESPIDER_ITEMCOUNT = 1000  # Eller efter 1000 items
+CLOSESPIDER_PAGECOUNT = 500   # Eller efter 500 sidor
+CLOSESPIDER_ERRORCOUNT = 50   # Eller efter 50 fel
+
+# DNS timeout
+DNSCACHE_ENABLED = True
+DNSCACHE_SIZE = 10000
+DNS_TIMEOUT = 60
+
+# Reactor settings
+REACTOR_THREADPOOL_MAXSIZE = 20
+
+# Ajaxcrawl settings (för JavaScript-heavy sites)
+AJAXCRAWL_ENABLED = False
+
+# Compression
+COMPRESSION_ENABLED = True
+
+# Stats
+STATS_CLASS = 'scrapy.statscollectors.MemoryStatsCollector'
+
+
+# Chrome Headless Settings
+# Ansluter till befintliga chromedp/headless-shell Docker-instanser
+
+# Chrome-konfiguration
+CHROME_HOST = '192.168.0.50'
+CHROME_PORT = 9222  # Primär port
+CHROME_PORTS = [9222, 9223]  # För load balancing mellan instanser
+CHROME_ENABLED = False  # Aktiveras med -s CHROME_ENABLED=True
+
+# Chrome middleware (aktiveras endast när CHROME_ENABLED=True)
+# Lägg till i DOWNLOADER_MIDDLEWARES när Chrome används
+CHROME_MIDDLEWARE = {
+    'doppelganger.middlewares_chrome.SuperSimpleChromeMiddleware': 585,
+}
+
+# Chrome-specifika inställningar
+CHROME_TIMEOUT = 30
+CHROME_PAGE_LOAD_TIMEOUT = 20
+CHROME_IMPLICIT_WAIT = 10
+
+# Justera inställningar för Chrome-användning
+CHROME_DOWNLOAD_DELAY = 8  # Längre delay för Chrome
+CHROME_CONCURRENT_REQUESTS = 1  # En åt gången för Chrome
+CHROME_RETRY_TIMES = 3  # Färre retries eftersom Chrome är mer tillförlitlig
+
+DOWNLOADER_MIDDLEWARES['doppelganger.middlewares_chrome.SuperSimpleChromeMiddleware'] = 585
+
+# =============================================================================
+# LOKAL CAMOUFOX KONFIGURATION (ersätter Docker Compose)
+# =============================================================================
+
+# Aktivera lokal Camoufox
+CAMOUFOX_ENABLED = True
+
+# Timeout-inställningar för lokal Camoufox
+CAMOUFOX_PAGE_LOAD_TIMEOUT = 30      # Timeout för sidladdning (sekunder)
+CAMOUFOX_CLOUDFLARE_WAIT = 15        # Väntetid för Cloudflare challenge (sekunder)
+
+# Mänskligt beteende simulation
+CAMOUFOX_HUMAN_DELAY_MIN = 2         # Minimum delay mellan åtgärder (sekunder)
+CAMOUFOX_HUMAN_DELAY_MAX = 8         # Maximum delay mellan åtgärder (sekunder)
+
+# Lokal Camoufox middleware (ersätter Docker-baserad)
+#DOWNLOADER_MIDDLEWARES.update({
+#    'doppelganger.middlewares_camoufox_local.CamoufoxLocalMiddleware': 543,
+#    'doppelganger.middlewares_camoufox_local.CamoufoxLocalDownloaderMiddleware': 544,
+#})
+
+DOWNLOAD_DELAY = 8
+RANDOMIZE_DOWNLOAD_DELAY = 0.5
+CONCURRENT_REQUESTS = 1
+CONCURRENT_REQUESTS_PER_DOMAIN = 1
+
+RETRY_TIMES = 3
+RETRY_HTTP_CODES = [403, 429, 500, 502, 503, 504, 522, 524]
+
+AUTOTHROTTLE_ENABLED = True
+AUTOTHROTTLE_START_DELAY = 8
+AUTOTHROTTLE_MAX_DELAY = 30
+AUTOTHROTTLE_TARGET_CONCURRENCY = 1.0
+
+COOKIES_ENABLED = True
+COOKIES_DEBUG = True
+
+USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0'
+
+DOWNLOADER_MIDDLEWARES.update({
+    'doppelganger.middlewares_chrome.ChromeHeadlessMiddleware': None,
+    'doppelganger.middlewares_chrome.ChromeDevToolsMiddleware': None,
+    'doppelganger.middlewares_chrome.SuperSimpleChromeMiddleware': None,
+})
+
+print("🦊 Lokal Camoufox-konfiguration laddad!")
+print(f"   Lokal installation aktiverad")
+print(f"   Delay: {DOWNLOAD_DELAY}s")
+print(f"   Cloudflare wait: {CAMOUFOX_CLOUDFLARE_WAIT}s")
