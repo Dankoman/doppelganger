@@ -64,13 +64,12 @@ class PornPicsImagesPipeline(ImagesPipeline):
         self,
         request: scrapy.http.Request,
         response: Optional[scrapy.http.Response] = None,
-        info: Optional[object] = None,
+        info: Optional[object] = None,  # Byt ut MediaPipelineStats mot object eller ta bort typangivelsen helt
         *,
         item: Optional[scrapy.Item] = None,
     ) -> str:
         star_name = "unknown"
         if item:
-            # Prio: använd name om tillgängligt, annars star
             if "name" in item and item["name"]:
                 star_name = str(item["name"]).replace(" ", "").replace("/", "-")
             elif "star" in item and item["star"]:
