@@ -27,7 +27,7 @@ class PerformerImagePipeline(ImagesPipeline):
         performer = adapter.get("name") or "unknown"
         cleaned = clean_name(performer)
         for url in adapter.get("image_urls", []):
-            # Skicka med endast modellens namn; idx hanteras av pipeline
+            # Skicka med modellens namn; idx räknas i file_path
             yield scrapy.Request(url, meta={"performer": cleaned})
 
     def file_path(self, request, response=None, info=None, *, item=None) -> str:
@@ -40,10 +40,10 @@ class PerformerImagePipeline(ImagesPipeline):
 
         # Prefix utan mellanslag
         prefix = cleaned_name.replace(" ", "") or "unknown"
-        # Hämta filändelse
+        # Filändelse
         url_path = urlparse(request.url).path
         ext = os.path.splitext(url_path)[1].lower() or ".jpg"
 
         filename = f"{prefix}-{count:03d}{ext}"
-        # Spara i mapp med mellanslag
+        # Spara i mapp med mellanslag i namnet
         return f"{cleaned_name}/{filename}"
