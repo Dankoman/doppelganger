@@ -13,6 +13,7 @@ pkgs.mkShell {
   shellHook = ''
     export PLAYWRIGHT_BROWSERS_PATH="$PWD/.pw-browsers"
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1
+    export LD_LIBRARY_PATH="/lib:${pkgs.zlib}/lib:${pkgs.stdenv.cc.cc.lib}/lib:${LD_LIBRARY_PATH:-}"
 
     if [ ! -d .venv ]; then python -m venv .venv; fi
     source .venv/bin/activate
