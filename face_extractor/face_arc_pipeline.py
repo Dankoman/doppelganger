@@ -128,52 +128,69 @@ def compute_embedding(app: FaceAnalysis,
                       rec_model,
                       img_path: str,
                       allow_fallback: bool,
-                      allow_upsample: bool) -> tuple[Optional[np.ndarray], int, bool]:
+                      allow_upsample: bool,
+                      verbose: bool = False) -> tuple[Optional[np.ndarray], int, bool]:
     """
-    Returnerar (embedding, antal_ansikten, fallback_användes).
-
-    Logik:
-      1) Om bilden är < MIN_* -> om fallback tillåts: direkt embedding, annars None.
-      2) Detektera på original.
-      3) Om 0 ansikten och allow_upsample: upsampla och detektera igen.
-      4) Om fortfarande 0 och allow_fallback: direkt embedding.
-      5) Acceptera endast exakt 1 ansikte (oavsett metod).
+    Returnerar (embedding, antal ansikten, fallback användes) och loggar detaljer om verbose är True.
     """
     img_rgb = load_image_rgb(img_path)
     if img_rgb is None:
+        if verbose:
+            print(f"[VERBOSE] {img_path}: failed to load image")
         return None, 0, False
 
     h, w = img_rgb.shape[:2]
     if w < MIN_WIDTH or h < MIN_HEIGHT:
+        if verbose:
+            print(f"[VERBOSE] {img_path}: image too small ({w}x{h})")
         if allow_fallback:
+            if verbose:
+                print(f"[VERBOSE] {img_path}: trying direct fallback for small image")
             emb = get_embedding_direct(rec_model, img_rgb)
+            if emb is None and verbose:
+                print(f"[VERBOSE] {img_path}: fallback produced no embedding")
             return (emb, 1 if emb is not None else 0, True)
         return None, 0, False
 
-    # 1) Detektera
     img_bgr = rgb_to_bgr(img_rgb)
     faces = app.get(img_bgr)
     n_faces = len(faces)
+    if verbose:
+        print(f"[VERBOSE] {img_path}: detector found {n_faces} face(s) on original")
 
-    # 2) Upsample
     if n_faces == 0 and allow_upsample:
+        if verbose:
+            print(f"[VERBOSE] {img_path}: trying upsample before second pass")
         img_up = upsample_if_needed(img_rgb)
         if img_up is not img_rgb:
             faces = app.get(rgb_to_bgr(img_up))
             n_faces = len(faces)
+            if verbose:
+                print(f"[VERBOSE] {img_path}: detector found {n_faces} face(s) after upsample")
+        elif verbose:
+            print(f"[VERBOSE] {img_path}: upsample skipped (image already large enough)")
 
-    # 3) Fallback
     if n_faces == 0 and allow_fallback:
+        if verbose:
+            print(f"[VERBOSE] {img_path}: trying direct fallback after detection failure")
         emb = get_embedding_direct(rec_model, img_rgb)
+        if emb is None and verbose:
+            print(f"[VERBOSE] {img_path}: fallback produced no embedding")
         return (emb, 1 if emb is not None else 0, True)
 
     if n_faces != 1:
+        if verbose:
+            print(f"[VERBOSE] {img_path}: rejecting because {n_faces} faces were detected")
         return None, n_faces, False
 
     emb = faces[0].embedding
     if emb is None or emb.size == 0:
+        if verbose:
+            print(f"[VERBOSE] {img_path}: embedding empty despite detection")
         return None, n_faces, False
 
+    if verbose:
+        print(f"[VERBOSE] {img_path}: embedding computed successfully")
     return emb.astype(np.float32), n_faces, False
 
 
@@ -210,8 +227,12 @@ def encode(args) -> None:
                     rec_model,
                     path,
                     allow_fallback=args.allow_fallback,
-                    allow_upsample=args.allow_upsample
+                    allow_upsample=args.allow_upsample,
+                    verbose=args.verbose
                 )
+                if args.verbose:
+                    status = "OK" if emb is not None and n == 1 else "FAIL"
+                    print(f"[VERBOSE] {path}: final status {status} (faces={n}, fallback={fb})")
                 if emb is not None and n == 1:
                     X.append(emb)
                     y.append(label)
@@ -277,6 +298,9 @@ def main():
                     help="Tillåt direkt embedding utan detektor om inga ansikten hittas")
     ap.add_argument("--allow-upsample", action="store_true",
                     help="Upsampla små bilder innan ny detektionskörning")
+
+    ap.add_argument("--verbose", action="store_true",
+                    help="Logga detaljerad status för varje bild")
 
     args = ap.parse_args()
 
