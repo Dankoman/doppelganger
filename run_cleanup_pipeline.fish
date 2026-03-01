@@ -40,3 +40,9 @@ echo "[5/5] Tränar om KNN-modellen..."
 $PYTHON face_arc_pipeline.py --mode train --embeddings $MERGED_EMBEDDINGS --model-out $MODEL_OUT; or exit $status
 
 echo "Klart!"
+
+# Töm face_extractor-filerna efter körning
+set fe_dir (realpath "$script_dir/../face_extractor")
+echo "Tömmer $fe_dir/remove.txt och $fe_dir/merge?.csv..."
+echo -n > "$fe_dir/remove.txt"
+echo -n > "$fe_dir/merge\?.csv"
