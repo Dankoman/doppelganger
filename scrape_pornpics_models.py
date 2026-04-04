@@ -85,12 +85,26 @@ async def safe_goto(page, url, wait_for_selector=None, timeout=60000, retries=2,
 
 
 async def scroll_to_load_more(page, selector, target_count, max_scrolls=40, label=""):
-    """Scrollar ner tills target_count element som matchar selector hittas, eller slut på sida."""
+    """Scrollar ner tills target_count element som matchar selector hittas, eller till stagnation."""
     last_height = await page.evaluate("document.body.scrollHeight")
+    last_count = 0
+    stagnation_count = 0
+    
     for i in range(max_scrolls):
         count = await page.locator(selector).count()
         if count >= target_count:
             break
+            
+        # Om vi inte hittade fler element efter en scroll, räkna stagnation
+        if count == last_count and count > 0:
+            stagnation_count += 1
+            if stagnation_count >= 3: # Prova 3 gånger ifall det är segt
+                if label: print(f"  [{label}] Stagnation vid {count} element. Avbryter scroll.")
+                break
+        else:
+            stagnation_count = 0
+            
+        last_count = count
             
         if label and i % 5 == 0:
             print(f"  [{label}] Scrollar för mer innehåll... ({count}/{target_count})")
@@ -217,6 +231,9 @@ async def scrape_model_galleries(page, model_name, model_url):
     cur.execute('UPDATE models SET started = 1 WHERE name = ?', (model_name,))
     db_conn.commit()
     
+    # Selektor för gallerier som tillhör den aktuella listan (undvik sökförslag)
+    GALLERY_SELECTOR = "#wrapper li.thumbwook a[href*='/galleries/']"
+    
     def get_local_image_count():
         model_dir = OUTPUT_DIR / model_name
         if not model_dir.exists():
@@ -229,16 +246,16 @@ async def scrape_model_galleries(page, model_name, model_url):
     print(f"[{model_name}] -> Letar gallerier via scroll på {model_url}")
     try:
         # På modellsidor väntar vi på galleri-länkar
-        await safe_goto(page, model_url, wait_for_selector="a[href*='/galleries/']", timeout=60000, label=model_name)
+        await safe_goto(page, model_url, wait_for_selector=GALLERY_SELECTOR, timeout=60000, label=model_name)
         # Vi scrollar tills vi har tillräckligt med gallerier för att nå 50 bilder (ca 5 gallerier räcker oftast, men vi tar 15 för säkerhets skull)
-        await scroll_to_load_more(page, "a[href*='/galleries/']", 15, label=model_name)
+        await scroll_to_load_more(page, GALLERY_SELECTOR, 15, label=model_name)
     except Exception as e:
         print(f"  [{model_name}] [FEL] Kunde inte ladda modellsida: {e}")
         db_conn.close()
         return
 
     # Hitta alla galleriboxar
-    links = await page.locator("a[href*='/galleries/']").element_handles()
+    links = await page.locator(GALLERY_SELECTOR).element_handles()
     
     for link in links:
         if get_local_image_count() >= MAX_IMAGES_PER_MODEL:
@@ -415,6 +432,12 @@ async def main():
         
         async def worker(name, url):
             async with semaphore:
+                # Slumpmässig fördröjning för att undvika samtidig start-detektering
+                import random
+                delay = random.uniform(2, 8)
+                print(f"  [{name}] Väntar {delay:.1f}s innan start...")
+                await asyncio.sleep(delay)
+                
                 cur_task = None
                 try:
                     cur_task = init_db()
@@ -422,11 +445,13 @@ async def main():
                     c.execute("INSERT OR IGNORE INTO models (name, url) VALUES (?, ?)", (name, url))
                     cur_task.commit()
                     
-                    w_page = await browser.new_page()
-                    try:
-                        await scrape_model_galleries(w_page, name, url)
-                    finally:
-                        await w_page.close()
+                    # Använd ny browser context för total isolering (cookies, fingerprint etc)
+                    async with await browser.new_context() as context:
+                        w_page = await context.new_page()
+                        try:
+                            await scrape_model_galleries(w_page, name, url)
+                        finally:
+                            await w_page.close()
                 except Exception as e:
                     print(f"🔴 [{name}] Kritiskt fel i worker: {e}")
                 finally:
