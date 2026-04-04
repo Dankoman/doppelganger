@@ -384,46 +384,69 @@ async def main():
         
         page = await browser.new_page()
         print(f"🔍 Letar efter modeller på tag-sidan via scroll: {START_URL}")
+        visited_galleries = set()
         try:
             await safe_goto(page, START_URL, wait_for_selector="a[href*='/galleries/']", label="Discovery")
-            # Scrolla tills vi har tillräckligt med gallerier för att hitta önskade modeller
-            await scroll_to_load_more(page, "a[href*='/galleries/']", args.persons_per_run * 3, label="Discovery")
             
-            gallery_links = await page.locator("a[href*='/galleries/']").element_handles()
-            print(f"  Hittade {len(gallery_links)} gallerier. Extraherar modeller...")
-            
-            for g_link in gallery_links:
-                if len(models_to_process) >= args.persons_per_run:
-                    break
+            while len(models_to_process) < args.persons_per_run:
+                gallery_links = await page.locator("a[href*='/galleries/']").element_handles()
+                new_found_in_batch = 0
                 
-                g_href = await g_link.get_attribute("href")
-                if not g_href: continue
-                g_url = urljoin(START_URL, g_href)
-                
-                # Öppna galleri för att hitta modeller
-                g_page = await browser.new_page()
-                try:
-                    await safe_goto(g_page, g_url, wait_for_selector=".gallery-info__content", timeout=30000, label="Extraction")
-                    model_links = await g_page.locator(".gallery-info__content a[href*='/pornstars/']").element_handles()
+                for g_link in gallery_links:
+                    if len(models_to_process) >= args.persons_per_run:
+                        break
                     
-                    for m_link in model_links:
-                        name = (await m_link.inner_text()).strip()
-                        href = await m_link.get_attribute("href")
-                        if name and href and name not in processed_models:
-                            m_url = urljoin(START_URL, href)
-                            cur.execute("SELECT completed FROM models WHERE name = ?", (name,))
-                            row = cur.fetchone()
-                            if not row or row[0] == 0:
-                                models_to_process.append((name, m_url))
-                                processed_models.add(name)
-                                print(f"    [FUNNEN] {name}")
+                    g_href = await g_link.get_attribute("href")
+                    if not g_href: continue
+                    g_url = urljoin(START_URL, g_href)
+                    
+                    if g_url in visited_galleries:
+                        continue
+                    
+                    visited_galleries.add(g_url)
+                    new_found_in_batch += 1
+                    
+                    # Öppna galleri för att hitta modeller
+                    g_page = await browser.new_page()
+                    try:
+                        # Ökad timeout till 60s för att vara mer tålig mot sega anslutningar
+                        await safe_goto(g_page, g_url, wait_for_selector=".gallery-info__content", timeout=60000, label="Extraction")
+                        model_links = await g_page.locator(".gallery-info__content a[href*='/pornstars/']").element_handles()
                         
-                        if len(models_to_process) >= args.persons_per_run:
-                            break
-                except:
-                    pass
-                finally:
-                    await g_page.close()
+                        for m_link in model_links:
+                            name = (await m_link.inner_text()).strip()
+                            href = await m_link.get_attribute("href")
+                            if name and href and name not in processed_models:
+                                m_url = urljoin(START_URL, href)
+                                cur.execute("SELECT completed FROM models WHERE name = ?", (name,))
+                                row = cur.fetchone()
+                                if not row or row[0] == 0:
+                                    # Spara till DB omedelbart så vi inte tappar framsteg om vi avbryter
+                                    cur.execute("INSERT OR IGNORE INTO models (name, url) VALUES (?, ?)", (name, m_url))
+                                    db_conn.commit()
+                                    
+                                    models_to_process.append((name, m_url))
+                                    processed_models.add(name)
+                                    print(f"    [FUNNEN] {name} ({len(models_to_process)}/{args.persons_per_run})")
+                            
+                            if len(models_to_process) >= args.persons_per_run:
+                                break
+                    except Exception as e:
+                        print(f"    [Extraction] Misslyckades med galleri: {e}")
+                    finally:
+                        await g_page.close()
+                        await asyncio.sleep(1.0) # Stealth-delay för att inte hamra servern oavbrutet
+
+                if len(models_to_process) < args.persons_per_run:
+                    current_count = len(gallery_links)
+                    print(f"  [Discovery] Hittat {len(models_to_process)}/{args.persons_per_run} modeller. Scrollar för fler gallerier...")
+                    await scroll_to_load_more(page, "a[href*='/galleries/']", current_count + 12, label="Discovery")
+                    
+                    # Kolla om vi faktiskt hittade fler
+                    new_count = await page.locator("a[href*='/galleries/']").count()
+                    if new_count <= current_count:
+                        print(f"  [Discovery] Inga fler gallerier hittades. Avbryter sökning.")
+                        break
         except Exception as e:
             print(f"    [VARNING] Fel vid sökning: {e}")
         
