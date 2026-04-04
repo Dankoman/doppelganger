@@ -28,3 +28,4 @@ crawls/*
 images-ppic
 scraper_state.db-wal
 scraper_state.db-shm
+scraper_state.db-shm
