@@ -26,3 +26,4 @@ face_extractor/arcface_work/embeddings.pkl
 .pw-browsers/*
 crawls/*
 images-ppic
+scraper_state.db-wal
