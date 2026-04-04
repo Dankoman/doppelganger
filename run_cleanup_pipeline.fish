@@ -18,14 +18,13 @@ init_var PYTHON "python3"
 init_var DATA_ROOT "/home/marqs/Bilder/pBook"
 init_var WORKDIR "$script_dir/arcface_work-ppic"
 init_var REMOVE_FILE "$script_dir/remove.txt"
-init_var MERGE_FILE "$script_dir/merge.txt"
-init_var PROCESSED_JSON "$WORKDIR/processed-ppic.jsonl"
+init_var PROCESSED_DB "$WORKDIR/processed.db"
 init_var EMBEDDINGS_PKL "$WORKDIR/embeddings_ppic.pkl"
 init_var MERGED_EMBEDDINGS "$WORKDIR/embeddings_ppic_merged.pkl"
 init_var MODEL_OUT "$WORKDIR/face_knn_arcface_ppic.pkl"
 
 echo "[1/5] Tar bort poster ur processed-jsonl..."
-$PYTHON remove_processed.py --processed $PROCESSED_JSON --remove $REMOVE_FILE --merge $MERGE_FILE; or exit $status
+$PYTHON remove_processed.py --db $PROCESSED_DB --remove $REMOVE_FILE; or exit $status
 
 echo "[2/5] Tar bort embeddings baserat på alias..."
 $PYTHON remove.py --embeddings $EMBEDDINGS_PKL --remove $REMOVE_FILE --no-alias; or exit $status
