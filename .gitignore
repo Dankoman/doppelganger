@@ -31,3 +31,5 @@ scraper_state.db-shm
 scraper_state.db-shm
 sync_pipeline_report.csv
 temp_uncertainty_report.csv
+uncertain_scraper_state.db-shm
+.gitignore
