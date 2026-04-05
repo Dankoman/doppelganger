@@ -232,7 +232,7 @@ async def scrape_model_galleries(page, model_name, model_url):
     db_conn.commit()
     
     # Selektor för gallerier som tillhör den aktuella listan (undvik sökförslag)
-    GALLERY_SELECTOR = "#wrapper li.thumbwook a[href*='/galleries/']"
+    GALLERY_SELECTOR = "li.thumbwook a[href*='/galleries/']"
     
     def get_local_image_count():
         model_dir = OUTPUT_DIR / model_name
