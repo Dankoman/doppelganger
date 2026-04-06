@@ -362,6 +362,10 @@ async def main():
         with open(report_file, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f, delimiter=";")
             for row in reader:
+                rec = row.get("Recommendation", "")
+                if "Namnen är nästan identiska" in rec or "MERGE: Slå ihop" in rec:
+                    continue
+                
                 if row.get("Person A"): flagged_names.add(row["Person A"])
                 if row.get("Person B"): flagged_names.add(row["Person B"])
     
