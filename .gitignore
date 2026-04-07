@@ -32,3 +32,4 @@ sync_pipeline_report.csv
 temp_uncertainty_report.csv
 uncertain_scraper_state.db-shm
 .gitignore
+.~lock.temp_uncertainty_report.csv#
