@@ -4,6 +4,8 @@ import sqlite3
 import os
 import aiohttp
 import re
+import csv
+import subprocess
 from pathlib import Path
 from urllib.parse import urljoin
 from camoufox.async_api import AsyncCamoufox
@@ -12,6 +14,64 @@ MAX_IMAGES_PER_MODEL = 50
 API_ENDPOINT = "http://127.0.0.1:5000/recognize"
 START_URL = "https://www.pornpics.com/tags/innie-pussy/"
 OUTPUT_DIR = Path("/home/marqs/Bilder/Innie")
+UNCERTAINTY_SCRIPT = Path("/home/marqs/Programmering/Python/3.11/face_extractor/model_uncertainty.py")
+DB_PATH = Path("/home/marqs/Programmering/Python/3.11/face_extractor/arcface_work-ppic/processed.db")
+EMB_PATH = Path("/home/marqs/Programmering/Python/3.11/face_extractor/arcface_work-ppic/embeddings_ppic.pkl")
+
+
+def get_flagged_models(min_samples=15):
+    """
+    Kör osäkerhets-rapporten och returnerar ett set med namn på modeller
+    som är flaggade som osäkra eller blandade identiteter.
+    """
+    print("🔍 Skapar osäkerhets-rapport med face_extractor...")
+    report_file = "temp_uncertainty_report.csv"
+    cmd = [
+        "python3", str(UNCERTAINTY_SCRIPT),
+        "--db", str(DB_PATH),
+        "--embeddings", str(EMB_PATH),
+        "--output", report_file,
+        "--top", "800",
+        "--exclusions", str(UNCERTAINTY_SCRIPT.parent / "similar_exclusions.txt"),
+        "--ignore", str(UNCERTAINTY_SCRIPT.parent / "uncertainty_exceptions.txt")
+    ]
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Analysen misslyckades: {e}")
+        return set()
+
+    flagged_names = set()
+    if os.path.exists(report_file):
+        with open(report_file, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f, delimiter=";")
+            for row in reader:
+                rec = row.get("Recommendation", "")
+                if "Namnen är nästan identiska" in rec or "MERGE: Slå ihop" in rec:
+                    continue
+                
+                # Kontrollera om mappen är flaggad för "blandade identiteter"
+                issue_a = row.get("Issue A", "")
+                issue_b = row.get("Issue B", "")
+                is_mixed_a = "varians" in issue_a.lower() or "blandade" in issue_a.lower() or "varians" in rec.lower() or "blandade" in rec.lower()
+                is_mixed_b = "varians" in issue_b.lower() or "blandade" in issue_b.lower() or "varians" in rec.lower() or "blandade" in rec.lower()
+
+                # Person A
+                name_a = row.get("Person A")
+                if name_a:
+                    samples_a = int(row.get("Samples A", "0") or "0")
+                    if samples_a < min_samples or is_mixed_a:
+                        flagged_names.add(name_a)
+
+                # Person B
+                name_b = row.get("Person B")
+                if name_b:
+                    samples_b = int(row.get("Samples B", "0") or "0")
+                    if samples_b < min_samples or is_mixed_b:
+                        flagged_names.add(name_b)
+    
+    print(f"✅ Hittade {len(flagged_names)} potentiellt osäkra modeller.")
+    return flagged_names
 
 
 def init_db(db_path="scraper_state.db"):
@@ -362,6 +422,7 @@ async def main():
     parser.add_argument("--persons-per-run", type=int, default=10, help="Number of limits for downloaded models per run")
     parser.add_argument("--images-per-person", type=int, default=50, help="Number of images to download per person")
     parser.add_argument("--concurrency", type=int, default=1, help="Number of concurrent models to scrape")
+    parser.add_argument("--min-samples", type=int, default=15, help="Hoppa över personer som redan har minst detta antal lyckade bilder (om ej 'blandade')")
     parser.add_argument("--wipe-db", action="store_true", help="Clear the database progress before starting")
     args = parser.parse_args()
 
@@ -376,6 +437,9 @@ async def main():
         cur.execute("DELETE FROM galleries")
         cur.execute("DELETE FROM images")
         db_conn.commit()
+
+    # Hämta osäkra modeller
+    flagged_names = get_flagged_models(args.min_samples)
 
     async with AsyncCamoufox(headless=True) as browser:
         semaphore = asyncio.Semaphore(args.concurrency)
@@ -418,16 +482,34 @@ async def main():
                             href = await m_link.get_attribute("href")
                             if name and href and name not in processed_models:
                                 m_url = urljoin(START_URL, href)
-                                cur.execute("SELECT completed FROM models WHERE name = ?", (name,))
-                                row = cur.fetchone()
-                                if not row or row[0] == 0:
-                                    # Spara till DB omedelbart så vi inte tappar framsteg om vi avbryter
-                                    cur.execute("INSERT OR IGNORE INTO models (name, url) VALUES (?, ?)", (name, m_url))
-                                    db_conn.commit()
+                                
+                                # Kolla om modellen redan finns och om den är vältränad
+                                exists = (OUTPUT_DIR / name).exists()
+                                is_flagged = name in flagged_names
+                                
+                                if not exists or is_flagged:
+                                    cur.execute("SELECT completed FROM models WHERE name = ?", (name,))
+                                    row = cur.fetchone()
                                     
-                                    models_to_process.append((name, m_url))
-                                    processed_models.add(name)
-                                    print(f"    [FUNNEN] {name} ({len(models_to_process)}/{args.persons_per_run})")
+                                    # Om den är flaggad för re-scraping, nollställ completed-flaggan
+                                    if is_flagged and row and row[0] == 1:
+                                        print(f"    [RESET] {name} är osäker, nollställer status för ny skrapning.")
+                                        cur.execute("UPDATE models SET completed = 0 WHERE name = ?", (name,))
+                                        db_conn.commit()
+                                        row = (0,)
+
+                                    if not row or row[0] == 0:
+                                        # Spara till DB omedelbart så vi inte tappar framsteg om vi avbryter
+                                        cur.execute("INSERT OR IGNORE INTO models (name, url) VALUES (?, ?)", (name, m_url))
+                                        db_conn.commit()
+                                        
+                                        models_to_process.append((name, m_url))
+                                        processed_models.add(name)
+                                        reason = "NY" if not exists else "OSÄKER"
+                                        print(f"    [FUNNEN] {name} ({reason}) ({len(models_to_process)}/{args.persons_per_run})")
+                                else:
+                                    # print(f"    [SKIP] {name} finns redan och är vältränad.")
+                                    processed_models.add(name) # Markera som sedd i denna körning
                             
                             if len(models_to_process) >= args.persons_per_run:
                                 break

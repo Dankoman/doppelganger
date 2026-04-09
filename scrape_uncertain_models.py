@@ -325,6 +325,7 @@ async def main():
     parser.add_argument("--persons-per-run", type=int, default=20, help="Number of models to scrape")
     parser.add_argument("--images-per-person", type=int, default=50, help="Images per person max")
     parser.add_argument("--concurrency", type=int, default=3, help="Concurrent models to scrape")
+    parser.add_argument("--min-samples", type=int, default=15, help="Hoppa över personer som redan har minst detta antal lyckade bilder (om ej 'blandade')")
     parser.add_argument("--wipe-db", action="store_true", help="Rensa databasen innan körning")
     args = parser.parse_args()
 
@@ -358,6 +359,7 @@ async def main():
         return
 
     flagged_names = set()
+    skipped_count = 0
     if os.path.exists(report_file):
         with open(report_file, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f, delimiter=";")
@@ -366,8 +368,32 @@ async def main():
                 if "Namnen är nästan identiska" in rec or "MERGE: Slå ihop" in rec:
                     continue
                 
-                if row.get("Person A"): flagged_names.add(row["Person A"])
-                if row.get("Person B"): flagged_names.add(row["Person B"])
+                # Kontrollera om mappen är flaggad för "blandade identiteter"
+                issue_a = row.get("Issue A", "")
+                issue_b = row.get("Issue B", "")
+                is_mixed_a = "varians" in issue_a.lower() or "blandade" in issue_a.lower() or "varians" in rec.lower() or "blandade" in rec.lower()
+                is_mixed_b = "varians" in issue_b.lower() or "blandade" in issue_b.lower() or "varians" in rec.lower() or "blandade" in rec.lower()
+
+                # Filtrera Person A
+                name_a = row.get("Person A")
+                if name_a:
+                    samples_a = int(row.get("Samples A", "0") or "0")
+                    if samples_a >= args.min_samples and not is_mixed_a:
+                        skipped_count += 1
+                    else:
+                        flagged_names.add(name_a)
+
+                # Filtrera Person B
+                name_b = row.get("Person B")
+                if name_b:
+                    samples_b = int(row.get("Samples B", "0") or "0")
+                    if samples_b >= args.min_samples and not is_mixed_b:
+                        skipped_count += 1
+                    else:
+                        flagged_names.add(name_b)
+    
+    if skipped_count > 0:
+        print(f"ℹ️  Hoppade över {skipped_count} personer som redan har >= {args.min_samples} bilder (och inte är flaggade som 'blandade').")
     
     print(f"✅ Hittade {len(flagged_names)} potentiellt osäkra modeller. Letar vidare på PornPics...")
 
