@@ -12,6 +12,7 @@ pkgs.mkShell {
     xorg.libXcomposite xorg.libXfixes xorg.libXdamage xorg.libXcursor
     xorg.libXi xorg.libxcb
     libdrm mesa nss nspr expat libxkbcommon
+    swi-prolog
   ];
 
   shellHook = ''
@@ -42,6 +43,7 @@ pkgs.mkShell {
       pkgs.xorg.libXfixes
       pkgs.xorg.libXrandr
       pkgs.xorg.libxcb
+      pkgs.swi-prolog
     ]}:''${LD_LIBRARY_PATH:-}"
 
     # nix-ld support
