@@ -33,3 +33,4 @@ temp_uncertainty_report.csv
 uncertain_scraper_state.db-shm
 .gitignore
 .~lock.temp_uncertainty_report.csv#
+uncertain_scraper_state.db-wal

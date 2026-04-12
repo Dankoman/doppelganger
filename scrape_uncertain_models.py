@@ -325,7 +325,7 @@ async def main():
     parser.add_argument("--persons-per-run", type=int, default=20, help="Number of models to scrape")
     parser.add_argument("--images-per-person", type=int, default=50, help="Images per person max")
     parser.add_argument("--concurrency", type=int, default=3, help="Concurrent models to scrape")
-    parser.add_argument("--min-samples", type=int, default=15, help="Hoppa över personer som redan har minst detta antal lyckade bilder (om ej 'blandade')")
+    parser.add_argument("--min-samples", type=int, default=5, help="Hoppa över personer som redan har minst detta antal lyckade bilder (om ej 'blandade')")
     parser.add_argument("--wipe-db", action="store_true", help="Rensa databasen innan körning")
     args = parser.parse_args()
 
