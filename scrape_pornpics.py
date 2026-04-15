@@ -23,6 +23,7 @@ FACE_EXTRACTOR_DIR = Path(__file__).parent.parent / "face_extractor"
 UNCERTAINTY_SCRIPT = FACE_EXTRACTOR_DIR / "model_uncertainty.py"
 PROCESSED_DB = FACE_EXTRACTOR_DIR / "arcface_work-ppic" / "processed.db"
 EMBEDDINGS_PATH = FACE_EXTRACTOR_DIR / "arcface_work-ppic" / "embeddings_ppic.pkl"
+DEFAULT_LIBRARY = Path("/home/marqs/Bilder/pBook")
 
 TAG_ALIASES = {
     "innie": "https://www.pornpics.com/tags/innie-pussy/",
@@ -31,9 +32,10 @@ TAG_ALIASES = {
 }
 
 class PornPicsScraper:
-    def __init__(self, output_dir, db_path, concurrency=3, images_per_person=50):
+    def __init__(self, output_dir, db_path, concurrency=3, images_per_person=50, library_dir=None):
         self.output_dir = Path(output_dir)
         self.db_path = Path(db_path)
+        self.library_dir = Path(library_dir) if library_dir else None
         self.concurrency = concurrency
         self.images_per_person = images_per_person
         self.resolver = IdentityResolver(
@@ -79,6 +81,25 @@ class PornPicsScraper:
 
     def get_db(self):
         return sqlite3.connect(self.db_path)
+
+    def is_model_done(self, name, canonical):
+        # 1. Kolla disk
+        if (self.output_dir / canonical).exists():
+            return True
+        if self.library_dir and (self.library_dir / canonical).exists():
+            return True
+        
+        # 2. Kolla databas
+        db = self.get_db()
+        cur = db.cursor()
+        # Vi kollar både namnet från taggen och det kanoniska namnet
+        cur.execute("SELECT completed FROM models WHERE name = ? OR name = ?", (name, canonical))
+        row = cur.fetchone()
+        db.close()
+        
+        if row and row[0] == 1:
+            return True
+        return False
 
     async def safe_goto(self, page, url, wait_for_selector=None, timeout=60000, retries=2, label=""):
         for attempt in range(retries + 1):
@@ -224,6 +245,8 @@ class PornPicsScraper:
     async def scrape_model_galleries(self, page, model_name, model_url):
         db_conn = self.get_db()
         cur = db_conn.cursor()
+        # Säkerställ att modellen finns i DB innan vi uppdaterar status
+        cur.execute('INSERT OR IGNORE INTO models (name, url) VALUES (?, ?)', (model_name, model_url))
         cur.execute('UPDATE models SET started = 1 WHERE name = ?', (model_name,))
         db_conn.commit()
 
@@ -237,6 +260,35 @@ class PornPicsScraper:
         print(f"[{model_name}] -> Letar gallerier på {model_url}")
         try:
             await self.safe_goto(page, model_url, wait_for_selector=GALLERY_SELECTOR, timeout=60000, label=model_name)
+            
+            # Kontrollera kön (Gender)
+            try:
+                # Vänta en kort stund på att infokortet faktiskt dyker upp
+                gender_item = page.locator(".card-additional-info .item", has_text="Gender:").first
+                
+                # Ge den upp till 5 sekunder att dyka upp om den inte finns direkt
+                try:
+                    await gender_item.wait_for(state="attached", timeout=5000)
+                except:
+                    pass
+
+                if await gender_item.count() > 0:
+                    gender_val = await gender_item.locator(".value").first.inner_text()
+                    gender_val = gender_val.strip()
+                    if "female" not in gender_val.lower():
+                        print(f"  [{model_name}] [SKIP] Kön verifierat som '{gender_val}', inte 'Female'.")
+                        cur.execute("UPDATE models SET completed = 1 WHERE name = ?", (model_name,))
+                        db_conn.commit()
+                        db_conn.close()
+                        return
+                    else:
+                        if self.images_per_person > 0: # Only log OK in verbose or if needed
+                             print(f"  [{model_name}] [GENDER OK] {gender_val}")
+                else:
+                    print(f"  [{model_name}] [VARNING] Hittade inget fält för kön. Fortsätter med försiktighet.")
+            except Exception as ge:
+                print(f"  [{model_name}] [VARNING] Kunde inte kontrollera kön: {ge}")
+
             await self.scroll_to_load_more(page, GALLERY_SELECTOR, 15, label=model_name)
         except Exception as e:
             print(f"  [{model_name}] [FEL] Kunde inte ladda modellsida: {e}")
@@ -351,6 +403,7 @@ async def main():
     parser.add_argument("--mode", choices=["tag", "report", "manual"], default="report", help="Scraping mode")
     parser.add_argument("--url", help="Start URL or alias (innie, pussy, closeup)")
     parser.add_argument("--output", help="Output directory")
+    parser.add_argument("--library", default=str(DEFAULT_LIBRARY), help=f"Main library directory to check for existing people (standard: {DEFAULT_LIBRARY})")
     parser.add_argument("--report", default="temp_uncertainty_report.csv", help="Uncertainty report CSV")
     parser.add_argument("--person", help="Manual person name(s), comma separated")
     parser.add_argument("--names-file", help="File with person names to scrape (one per line)")
@@ -364,8 +417,10 @@ async def main():
     output_dir = Path(args.output) if args.output else Path("/home/marqs/Bilder/Nya")
     if args.url and args.url.lower() == "innie" and not args.output:
         output_dir = Path("/home/marqs/Bilder/Innie")
+    
+    library_dir = Path(args.library)
 
-    scraper = PornPicsScraper(output_dir, DEFAULT_DB_PATH, args.concurrency, args.images_per_person)
+    scraper = PornPicsScraper(output_dir, DEFAULT_DB_PATH, args.concurrency, args.images_per_person, library_dir=library_dir)
     
     if args.wipe_db:
         print("🧹 Rensar databasen...")
@@ -375,6 +430,7 @@ async def main():
         conn.execute("DELETE FROM images")
         conn.commit()
         conn.close()
+        sys.exit(0)
 
     models_to_process = [] # Lista med (name, url, canonical)
 
@@ -399,7 +455,20 @@ async def main():
                 }''')
                 await page.close()
             
-            db_conn.close()
+            for item in flagged:
+                name = item["name"]
+                canonical = item["canonical"]
+                
+                # Hoppa över om redan hanterad (disk eller DB)
+                if scraper.is_model_done(name, canonical):
+                    continue
+                
+                m_url = list_links.get(name.lower())
+                if not m_url:
+                    m_url = f"https://www.pornpics.com/pornstars/{name.lower().replace(' ', '-')}/"
+                
+                models_to_process.append((name, m_url, canonical))
+                if len(models_to_process) >= args.persons_per_run: break
             
         elif args.mode == "manual":
             # Steg 1: Hämta namn från argument eller fil
@@ -432,6 +501,11 @@ async def main():
                 decision = scraper.resolver.get_scrape_decision(name, 0, 0.0)
                 canonical = decision["canonical"]
                 
+                # Kolla om redan hanterad
+                if scraper.is_model_done(name, canonical):
+                    print(f"    [SKIP] {name} -> {canonical} är redan hanterad.")
+                    continue
+
                 m_url = list_links.get(name.lower())
                 if not m_url:
                     m_url = f"https://www.pornpics.com/pornstars/{name.lower().replace(' ', '-')}/"
@@ -472,9 +546,8 @@ async def main():
                                 decision = scraper.resolver.get_scrape_decision(m_name, 0, 0.0) # 0,0.0 för okända
                                 canonical = decision["canonical"]
                                 
-                                # Kolla om mappen finns
-                                exists = (output_dir / canonical).exists()
-                                if not exists:
+                                # Kolla om mappen finns i output, huvudbibliotek eller är markerad som klar i DB
+                                if not scraper.is_model_done(m_name, canonical):
                                     models_to_process.append((m_name, urljoin(start_url, m_href), canonical))
                                     print(f"    [FUNNEN] {m_name} -> {canonical} (NY) ({len(models_to_process)}/{args.persons_per_run})")
                                 if len(models_to_process) >= args.persons_per_run: break
