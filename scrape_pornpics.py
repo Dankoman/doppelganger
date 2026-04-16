@@ -173,34 +173,53 @@ class PornPicsScraper:
         await context.route("**/*", handle_route)
 
     async def validate_image(self, image_bytes: bytes) -> str:
-        try:
-            async with aiohttp.ClientSession() as session:
-                data = aiohttp.FormData()
-                data.add_field('image', image_bytes, filename='image.jpg', content_type='image/jpeg')
-                async with session.post(API_ENDPOINT + "?raw_faces=1&all_angles=1", data=data, timeout=25) as resp:
-                    if resp.status != 200:
-                        return "reject"
-                    faces = await resp.json()
-                    if not isinstance(faces, list):
-                        return "reject"
-                    if len(faces) == 0:
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    # Lägg till korta timeouts för att snabbt upptäcka om tjänsten är nere
+                    data = aiohttp.FormData()
+                    data.add_field('image', image_bytes, filename='image.jpg', content_type='image/jpeg')
+                    
+                    async with session.post(API_ENDPOINT + "?raw_faces=1&all_angles=1", data=data, timeout=30) as resp:
+                        if resp.status != 200:
+                            if resp.status == 503: # Tjänsten laddar om
+                                raise aiohttp.ClientConnectorError(None, None)
+                            return "reject"
+                        
+                        faces = await resp.json()
+                        if not isinstance(faces, list):
+                            return "reject"
+                        
+                        if len(faces) == 0:
+                            return "save"
+                        
+                        female_count = 0
+                        male_count = 0
+                        for f in faces:
+                            prob = f.get("female_probability")
+                            if prob is not None and prob >= 0.60:
+                                female_count += 1
+                            else:
+                                male_count += 1
+                        
+                        if female_count > 1:
+                            return "abort"
+                        if male_count > 0:
+                            return "reject"
+                        
                         return "save"
-                    female_count = 0
-                    male_count = 0
-                    for f in faces:
-                        prob = f.get("female_probability")
-                        if prob is not None and prob >= 0.60:
-                            female_count += 1
-                        else:
-                            male_count += 1
-                    if female_count > 1:
-                        return "abort"
-                    if male_count > 0:
-                        return "reject"
-                    return "save"
-        except Exception as e:
-            print(f"  [API FEL] {e}")
-            return "reject"
+            except (aiohttp.ClientConnectorError, asyncio.TimeoutError, aiohttp.ServerDisconnectedError):
+                if attempt < max_retries - 1:
+                    print(f"  [API VÄNTAR] Servertjänsten är inte tillgänglig (omladdning pågår?). Försök {attempt+1}/{max_retries}...")
+                    await asyncio.sleep(5)
+                else:
+                    print(f"  [API FEL] Kunde inte nå servertjänsten efter {max_retries} försök.")
+                    return "reject"
+            except Exception as e:
+                print(f"  [API FEL] Oväntat fel vid validering: {e}")
+                return "reject"
+        return "reject"
 
     async def download_image(self, page, url, model_name, gallery_url):
         db_conn = self.get_db()

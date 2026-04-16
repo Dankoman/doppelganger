@@ -114,40 +114,52 @@ async def scroll_to_load_more(page, selector, target_count, max_scrolls=40, labe
 
 
 async def validate_image(image_bytes: bytes) -> str:
-    try:
-        async with aiohttp.ClientSession() as session:
-            data = aiohttp.FormData()
-            data.add_field('image', image_bytes, filename='image.jpg', content_type='image/jpeg')
-            
-            async with session.post(API_ENDPOINT + "?raw_faces=1&all_angles=1", data=data, timeout=25) as resp:
-                if resp.status != 200:
-                    return "reject"
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            async with aiohttp.ClientSession() as session:
+                data = aiohttp.FormData()
+                data.add_field('image', image_bytes, filename='image.jpg', content_type='image/jpeg')
                 
-                faces = await resp.json()
-                if not isinstance(faces, list):
-                    return "reject"
-                
-                if len(faces) == 0:
+                async with session.post(API_ENDPOINT + "?raw_faces=1&all_angles=1", data=data, timeout=30) as resp:
+                    if resp.status != 200:
+                        if resp.status == 503: # Tjänsten laddar om
+                            raise aiohttp.ClientConnectorError(None, None)
+                        return "reject"
+                    
+                    faces = await resp.json()
+                    if not isinstance(faces, list):
+                        return "reject"
+                    
+                    if len(faces) == 0:
+                        return "save"
+                    
+                    female_count = 0
+                    male_count = 0
+                    for f in faces:
+                        prob = f.get("female_probability")
+                        if prob is not None and prob >= 0.60:
+                            female_count += 1
+                        else:
+                            male_count += 1
+                    
+                    if female_count > 1:
+                        return "abort"
+                    if male_count > 0:
+                        return "reject"
+                    
                     return "save"
-                
-                female_count = 0
-                male_count = 0
-                for f in faces:
-                    prob = f.get("female_probability")
-                    if prob is not None and prob >= 0.60:
-                        female_count += 1
-                    else:
-                        male_count += 1
-                
-                if female_count > 1:
-                    return "abort"
-                if male_count > 0:
-                    return "reject"
-                
-                return "save"
-    except Exception as e:
-        print(f"  [API FEL] {e}")
-        return "reject"
+        except (aiohttp.ClientConnectorError, asyncio.TimeoutError, aiohttp.ServerDisconnectedError):
+            if attempt < max_retries - 1:
+                print(f"  [API VÄNTAR] Servertjänsten är inte tillgänglig (omladdning pågår?). Försök {attempt+1}/{max_retries}...")
+                await asyncio.sleep(5)
+            else:
+                print(f"  [API FEL] Kunde inte nå servertjänsten efter {max_retries} försök.")
+                return "reject"
+        except Exception as e:
+            print(f"  [API FEL] Oväntat fel vid validering: {e}")
+            return "reject"
+    return "reject"
 
 
 async def download_image(page, url, model_name, gallery_url):
@@ -216,6 +228,32 @@ async def scrape_model_galleries(page, model_name, model_url):
     print(f"[{model_name}] -> Letar gallerier på {model_url}")
     try:
         await safe_goto(page, model_url, wait_for_selector=GALLERY_SELECTOR, timeout=60000, label=model_name)
+        
+        # Kontrollera kön (Gender)
+        try:
+            # Vänta en kort stund på att infokortet faktiskt dyker upp
+            gender_item = page.locator(".card-additional-info .item", has_text="Gender:").first
+            
+            # Ge den upp till 5 sekunder att dyka upp om den inte finns direkt
+            try:
+                await gender_item.wait_for(state="attached", timeout=5000)
+            except:
+                pass
+
+            if await gender_item.count() > 0:
+                gender_val = await gender_item.locator(".value").first.inner_text()
+                gender_val = gender_val.strip()
+                if "female" not in gender_val.lower():
+                    print(f"  [{model_name}] [SKIP] Kön verifierat som '{gender_val}', inte 'Female'.")
+                    cur.execute("UPDATE models SET completed = 1 WHERE name = ?", (model_name,))
+                    db_conn.commit()
+                    db_conn.close()
+                    return
+            else:
+                print(f"  [{model_name}] [VARNING] Hittade inget fält för kön. Fortsätter.")
+        except Exception as ge:
+            print(f"  [{model_name}] [VARNING] Kunde inte kontrollera kön: {ge}")
+
         await scroll_to_load_more(page, GALLERY_SELECTOR, 15, label=model_name)
     except Exception as e:
         print(f"  [{model_name}] [FEL] Kunde inte ladda modellsida: {e}")
