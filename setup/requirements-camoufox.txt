@@ -1,0 +1,29 @@
+# Camoufox och Selenium dependencies
+selenium>=4.15.0
+webdriver-manager>=4.0.0
+undetected-chromedriver>=3.5.0
+
+# Befintliga dependencies
+scrapy>=2.11.0
+scrapy-user-agents>=0.1.1
+fake-useragent>=1.4.0
+requests>=2.31.0
+lxml>=4.9.0
+pillow>=10.0.0
+brotli>=1.1.0
+brotlicffi>=1.1.0
+zstandard>=0.22.0
+
+# Nätverks och HTTP förbättringar
+urllib3>=2.0.0
+certifi>=2023.7.22
+charset-normalizer>=3.3.0
+idna>=3.4
+
+# Komprimering och encoding
+zstd>=1.5.5.1
+
+# Debugging och utveckling
+ipython>=8.0.0
+ipdb>=0.13.0
+
