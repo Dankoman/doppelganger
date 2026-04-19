@@ -1,0 +1,16 @@
+# Requirements för lokal Camoufox installation
+# Ersätter Docker Compose-uppsättningen
+
+# Camoufox med GeoIP-stöd
+camoufox[geoip]>=0.4.0
+
+# Scrapy och dependencies (om inte redan installerat)
+scrapy>=2.5.0
+requests>=2.25.0
+
+# Async support
+asyncio
+
+# För bättre prestanda
+lxml>=4.6.0
+
