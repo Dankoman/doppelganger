@@ -6,9 +6,18 @@ import aiohttp
 import re
 import csv
 import subprocess
+import random
 from pathlib import Path
 from urllib.parse import urljoin
 from camoufox.async_api import AsyncCamoufox
+from rich.live import Live
+from rich.table import Table
+from rich.panel import Panel
+from rich.layout import Layout
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn
+from rich.text import Text
+from rich.align import Align
 
 MAX_IMAGES_PER_MODEL = 50
 API_ENDPOINT = "http://127.0.0.1:5000/recognize"
@@ -17,6 +26,64 @@ FACE_EXTRACTOR_DIR = Path(__file__).parent.parent.parent / "face_extractor"
 UNCERTAINTY_SCRIPT = FACE_EXTRACTOR_DIR / "model_uncertainty.py"
 DB_PATH = FACE_EXTRACTOR_DIR / "arcface_work-ppic" / "processed.db"
 EMB_PATH = FACE_EXTRACTOR_DIR / "arcface_work-ppic" / "embeddings_ppic.pkl"
+
+class ScraperUI:
+    def __init__(self, concurrency, total_models):
+        self.console = Console()
+        self.layout = Layout()
+        self.total_models = total_models
+        self.completed_models = 0
+        self.total_images = 0
+        self.logs = []
+        self.worker_status = ["Väntar..."] * concurrency
+        self.worker_models = ["-"] * concurrency
+        
+        self.layout.split_column(
+            Layout(name="header", size=3),
+            Layout(name="body", ratio=1),
+            Layout(name="footer", size=10)
+        )
+        self.layout["body"].split_row(
+            Layout(name="workers", ratio=1),
+            Layout(name="stats", size=30)
+        )
+
+    def log(self, message):
+        self.logs.append(message)
+        if len(self.logs) > 15:
+            self.logs.pop(0)
+
+    def update_worker(self, idx, model_name, status):
+        self.worker_models[idx] = model_name
+        self.worker_status[idx] = status
+
+    def render(self):
+        # Header
+        header_text = Text(f"🚀 PornPics Scraper Dashboard | Modeller: {self.completed_models}/{self.total_models} | Bilder: {self.total_images}", 
+                          style="bold white on blue", justify="center")
+        self.layout["header"].update(Panel(Align.center(header_text)))
+
+        # Workers Table
+        table = Table(title="Aktiva Arbetare", expand=True)
+        table.add_column("ID", width=4)
+        table.add_column("Modell", style="magenta", width=25)
+        table.add_column("Status", style="cyan")
+        
+        for i, (m, s) in enumerate(zip(self.worker_models, self.worker_status)):
+            table.add_row(str(i+1), m, s)
+        self.layout["workers"].update(Panel(table))
+
+        # Stats Panel
+        stats_text = Text(f"Klara: {self.completed_models}\nTotalt: {self.total_models}\nBilder: {self.total_images}\n\nQ: Ctrl+C för att avbryta", style="dim")
+        self.layout["stats"].update(Panel(stats_text, title="Statistik"))
+
+        # Logs Panel
+        log_content = "\n".join(self.logs)
+        self.layout["footer"].update(Panel(log_content, title="Senaste Händelser", border_style="white"))
+
+        return self.layout
+
+UI = None
 
 
 def init_db(db_path=None):
@@ -59,26 +126,61 @@ def init_db(db_path=None):
 
 
 async def safe_goto(page, url, wait_for_selector=None, timeout=60000, retries=2, label=""):
+    global UI
     for attempt in range(retries + 1):
         try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
-            await asyncio.sleep(1)
+            goto_success = False
+            try:
+                # Vi försöker ladda sidan. Ofta timear detta ut pga externa skript som hänger sig.
+                await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+                goto_success = True
+            except Exception as goto_err:
+                if "Timeout" in str(goto_err) and wait_for_selector:
+                    if UI: UI.log(f"  [{label}] Sidladdning timeade ut, men vi kollar om galleriet laddat ändå...")
+                else:
+                    raise goto_err
             
             if wait_for_selector:
-                await page.wait_for_selector(wait_for_selector, timeout=20000, state="attached")
-            else:
-                try:
-                    await page.wait_for_load_state("domcontentloaded", timeout=15000)
-                except:
-                    pass
+                # Vi väntar på elementet. Även om goto timeade ut, kan elementet finnas där.
+                await page.wait_for_selector(wait_for_selector, timeout=15000, state="attached")
+            elif not goto_success:
+                raise Exception(f"Timeout vid laddning av {url}")
+                
             return True
         except Exception as e:
+            err_str = str(e)
+            if "Timeout" in err_str:
+                phase = "väntan på selector" if "wait_for_selector" in err_str else "navigering"
+                msg = f"Timeout under {phase}"
+            else:
+                msg = err_str
+
             if attempt < retries:
-                print(f"  [{label}] [RETRY {attempt+1}] Misslyckades att ladda {url}: {e}")
-                await asyncio.sleep(2)
+                if UI: UI.log(f"  [{label}] [RETRY {attempt+1}] Misslyckades att ladda {url}: {msg}")
+                else: print(f"  [{label}] [RETRY {attempt+1}] Misslyckades att ladda {url}: {msg}")
+                try:
+                    await page.evaluate("window.stop()")
+                except:
+                    pass
+                await asyncio.sleep(random.uniform(3, 7))
             else:
                 raise e
     return False
+
+
+async def setup_resource_blocking(context):
+    async def handle_route(route):
+        req = route.request
+        # Blockera kända annonsdomäner och trackers som segar ner laddningen
+        if any(x in req.url for x in [
+            "google-analytics", "doubleclick", "googletagmanager", "yandex.ru", 
+            "adnxs", "popads", "onclickads", "tsyndicate.com", "realsrv.com",
+            "trafficstars.com", "exoclick.com", "juicyads.com"
+        ]):
+            return await route.abort()
+        await route.continue_()
+    
+    await context.route("**/*", handle_route)
 
 
 async def scroll_to_load_more(page, selector, target_count, max_scrolls=40, label=""):
@@ -160,12 +262,12 @@ async def validate_image(image_bytes: bytes) -> str:
                 print(f"  [API FEL] Kunde inte nå servertjänsten efter {max_retries} försök.")
                 return "reject"
         except Exception as e:
-            print(f"  [API FEL] Oväntat fel vid validering: {e}")
+            if UI: UI.log(f"  [API FEL] Oväntat fel vid validering: {e}")
             return "reject"
     return "reject"
 
 
-async def download_image(page, url, model_name, gallery_url):
+async def download_image(page, url, model_name, gallery_url, worker_idx=0):
     db_conn = init_db()
     cur = db_conn.cursor()
     cur.execute("SELECT local_path, valid FROM images WHERE url = ?", (url,))
@@ -174,9 +276,9 @@ async def download_image(page, url, model_name, gallery_url):
         db_conn.close()
         return "save" if row[1] == 1 else "reject"
         
-    print(f"  [{model_name}] Laddar ner: {url}")
+    if UI: UI.update_worker(worker_idx, model_name, f"Laddar ner: {url[:40]}...")
     try:
-        response = await page.request.get(url, headers={"Referer": page.url}, timeout=60000)
+        response = await page.request.get(url, headers={"Referer": page.url}, timeout=30000)
         if response.status != 200:
             db_conn.close()
             return "reject"
@@ -205,16 +307,18 @@ async def download_image(page, url, model_name, gallery_url):
                     (url, model_name, gallery_url, str(local_path), 1))
         db_conn.commit()
         db_conn.close()
-        print(f"  [{model_name}] [SPARAD] {local_path}")
+        if UI: 
+            UI.total_images += 1
+            UI.log(f"  [{model_name}] [SPARAD] {local_path.name}")
         return "save"
         
     except Exception as e:
-        print(f"  [{model_name}] [ERROR] {url}: {e}")
+        if UI: UI.log(f"  [{model_name}] [ERROR] {url}: {e}")
         db_conn.close()
         return "reject"
 
 
-async def scrape_model_galleries(page, model_name, model_url):
+async def scrape_model_galleries(page, model_name, model_url, worker_idx=0):
     db_conn = init_db()
     cur = db_conn.cursor()
     cur.execute('UPDATE models SET started = 1 WHERE name = ?', (model_name,))
@@ -228,13 +332,15 @@ async def scrape_model_galleries(page, model_name, model_url):
             return 0
         return len(list(model_dir.glob("*.jpg")))
     
-    print(f"[{model_name}] -> Letar gallerier på {model_url}")
+    if UI: 
+        UI.log(f"[{model_name}] -> Startar skrapning")
+        UI.update_worker(worker_idx, model_name, "Laddar modellsida...")
     try:
-        await safe_goto(page, model_url, wait_for_selector=GALLERY_SELECTOR, timeout=60000, label=model_name)
+        await safe_goto(page, model_url, wait_for_selector=GALLERY_SELECTOR, timeout=30000, label=model_name)
         
         # Kontrollera kön (Gender)
         try:
-            # Vänta en kort stund på att infokortet faktiskt dyker upp
+            if UI: UI.update_worker(worker_idx, model_name, "Kontrollerar kön...")
             gender_item = page.locator(".card-additional-info .item", has_text="Gender:").first
             
             # Ge den upp till 5 sekunder att dyka upp om den inte finns direkt
@@ -247,19 +353,20 @@ async def scrape_model_galleries(page, model_name, model_url):
                 gender_val = await gender_item.locator(".value").first.inner_text()
                 gender_val = gender_val.strip()
                 if "female" not in gender_val.lower():
-                    print(f"  [{model_name}] [SKIP] Kön verifierat som '{gender_val}', inte 'Female'.")
+                    if UI: UI.log(f"  [{model_name}] [SKIP] Kön verifierat som '{gender_val}', inte 'Female'.")
                     cur.execute("UPDATE models SET completed = 1 WHERE name = ?", (model_name,))
                     db_conn.commit()
                     db_conn.close()
                     return
             else:
-                print(f"  [{model_name}] [VARNING] Hittade inget fält för kön. Fortsätter.")
+                if UI: UI.log(f"  [{model_name}] [VARNING] Hittade inget fält för kön. Fortsätter.")
         except Exception as ge:
-            print(f"  [{model_name}] [VARNING] Kunde inte kontrollera kön: {ge}")
+            if UI: UI.log(f"  [{model_name}] [VARNING] Kunde inte kontrollera kön: {ge}")
 
+        if UI: UI.update_worker(worker_idx, model_name, "Söker efter fler gallerier...")
         await scroll_to_load_more(page, GALLERY_SELECTOR, 15, label=model_name)
     except Exception as e:
-        print(f"  [{model_name}] [FEL] Kunde inte ladda modellsida: {e}")
+        if UI: UI.log(f"  [{model_name}] [FEL] Kunde inte ladda modellsida: {e}")
         db_conn.close()
         return
 
@@ -299,13 +406,13 @@ async def scrape_model_galleries(page, model_name, model_url):
         if get_local_image_count() >= MAX_IMAGES_PER_MODEL:
             break
             
-        print(f" [{model_name}] -> Öppnar galleri: {g_url}")
+        if UI: UI.update_worker(worker_idx, model_name, f"Öppnar galleri: {g_url[:40]}...")
         gallery_page = await page.context.new_page()
         try:
-            await safe_goto(gallery_page, g_url, wait_for_selector="img", timeout=45000, label=model_name)
+            await safe_goto(gallery_page, g_url, wait_for_selector="img", timeout=25000, label=model_name)
             await asyncio.sleep(1)
         except Exception as e:
-            print(f"  [{model_name}] [SKIP] Kunde inte öppna galleri: {e}")
+            if UI: UI.log(f"  [{model_name}] [SKIP] Kunde inte öppna galleri: {e}")
             await gallery_page.close()
             continue
             
@@ -337,10 +444,10 @@ async def scrape_model_galleries(page, model_name, model_url):
             if "/460/" in target_url:
                 target_url = target_url.replace("/460/", "/1280/")
             
-            status = await download_image(gallery_page, target_url, model_name, g_url)
+            status = await download_image(gallery_page, target_url, model_name, g_url, worker_idx=worker_idx)
             
             if status == "abort":
-                print(f"  [{model_name}] [SCORCHED EARTH] Multi-kvinna detekterad!")
+                if UI: UI.log(f"  [{model_name}] [SCORCHED EARTH] Multi-kvinna detekterad!")
                 cur.execute("SELECT local_path FROM images WHERE gallery_url = ? AND local_path != ''", (g_url,))
                 for (p,) in cur.fetchall():
                     if os.path.exists(p): os.remove(p)
@@ -361,7 +468,10 @@ async def scrape_model_galleries(page, model_name, model_url):
     cur.execute("UPDATE models SET completed = 1 WHERE name = ?", (model_name,))
     db_conn.commit()
     db_conn.close()
-    print(f"[{model_name}] Färdig med modell!")
+    if UI: 
+        UI.completed_models += 1
+        UI.update_worker(worker_idx, "-", "Klar!")
+        UI.log(f"[{model_name}] Färdig med modell!")
 
 
 async def main():
@@ -403,7 +513,8 @@ async def main():
         print(f"❌ Analysen misslyckades: {e}")
         return
 
-    flagged_names = set()
+    flagged_critical = []
+    flagged_normal = []
     skipped_count = 0
     if os.path.exists(report_file):
         with open(report_file, "r", encoding="utf-8") as f:
@@ -413,34 +524,52 @@ async def main():
                 if "Namnen är nästan identiska" in rec or "MERGE: Slå ihop" in rec:
                     continue
                 
-                # Kontrollera om mappen är flaggad för "blandade identiteter"
+                # Kontrollera om mappen är flaggad för "blandade identiteter" (varians)
                 issue_a = row.get("Issue A", "")
                 issue_b = row.get("Issue B", "")
                 is_mixed_a = "varians" in issue_a.lower() or "blandade" in issue_a.lower() or "varians" in rec.lower() or "blandade" in rec.lower()
                 is_mixed_b = "varians" in issue_b.lower() or "blandade" in issue_b.lower() or "varians" in rec.lower() or "blandade" in rec.lower()
+                
+                # Är det ett förväxlingspar? (Person B finns)
+                name_b = row.get("Person B", "")
+                is_confusion = bool(name_b)
 
                 # Filtrera Person A
                 name_a = row.get("Person A")
                 if name_a:
                     samples_a = int(row.get("Samples A", "0") or "0")
-                    if samples_a >= args.min_samples and not is_mixed_a:
+                    if samples_a >= args.min_samples and not is_mixed_a and not is_confusion:
                         skipped_count += 1
                     else:
-                        flagged_names.add(name_a)
+                        if is_mixed_a or is_confusion:
+                            flagged_critical.append(name_a)
+                        else:
+                            flagged_normal.append(name_a)
 
-                # Filtrera Person B
-                name_b = row.get("Person B")
+                # Filtrera Person B (om den finns och inte redan är hanterad som A)
                 if name_b:
                     samples_b = int(row.get("Samples B", "0") or "0")
-                    if samples_b >= args.min_samples and not is_mixed_b:
-                        skipped_count += 1
+                    if samples_b >= args.min_samples and not is_mixed_b and not is_confusion:
+                        # Hoppa över om den har nog med samples och inte är i behov av kritisk fix
+                        pass
                     else:
-                        flagged_names.add(name_b)
+                        if is_mixed_b or is_confusion:
+                            flagged_critical.append(name_b)
+                        else:
+                            flagged_normal.append(name_b)
     
+    # Ta bort dubbletter men behåll ordning (critical först)
+    seen = set()
+    flagged_names = []
+    for n in flagged_critical + flagged_normal:
+        if n not in seen:
+            flagged_names.append(n)
+            seen.add(n)
+
     if skipped_count > 0:
-        print(f"ℹ️  Hoppade över {skipped_count} personer som redan har >= {args.min_samples} bilder (och inte är flaggade som 'blandade').")
+        print(f"ℹ️  Hoppade över {skipped_count} personer som redan har >= {args.min_samples} bilder (och inte är flaggade som 'blandade' eller 'förväxling').")
     
-    print(f"✅ Hittade {len(flagged_names)} potentiellt osäkra modeller. Letar vidare på PornPics...")
+    print(f"✅ Hittade {len(flagged_names)} potentiellt osäkra modeller ({len(flagged_critical)} kritiska). Letar vidare på PornPics...")
 
     async with AsyncCamoufox(headless=True) as browser:
         page = await browser.new_page()
@@ -488,11 +617,10 @@ async def main():
 
         semaphore = asyncio.Semaphore(args.concurrency)
 
-        async def worker(n, u):
+        async def worker(n, u, idx):
             async with semaphore:
-                import random
                 delay = random.uniform(2, 6)
-                print(f"  [{n}] Väntar {delay:.1f}s innan start...")
+                if UI: UI.update_worker(idx, n, f"Väntar {delay:.1f}s...")
                 await asyncio.sleep(delay)
                 
                 cur_task = None
@@ -503,20 +631,36 @@ async def main():
                     cur_task.commit()
                     
                     async with await browser.new_context() as context:
+                        await setup_resource_blocking(context)
                         w_page = await context.new_page()
                         try:
-                            await scrape_model_galleries(w_page, n, u)
+                            await scrape_model_galleries(w_page, n, u, worker_idx=idx)
                         finally:
                             await w_page.close()
                 except Exception as e:
-                    print(f"🔴 [{n}] Kritiskt fel i worker: {e}")
+                    if UI: UI.log(f"🔴 [{n}] Kritiskt fel i worker: {e}")
                 finally:
                     if cur_task:
                         cur_task.close()
-
-        tasks = [worker(n, u) for n, u in models_to_process]
-        if tasks:
-            await asyncio.gather(*tasks)
+        
+        tasks = [worker(n, u, i % args.concurrency) for i, (n, u) in enumerate(models_to_process)]
+        
+        global UI
+        UI = ScraperUI(args.concurrency, len(models_to_process))
+        
+        with Live(UI.render(), refresh_per_second=4, screen=False) as live:
+            # Uppdatera Live-objektet periodiskt
+            async def ui_updater():
+                while True:
+                    live.update(UI.render())
+                    await asyncio.sleep(0.25)
+            
+            updater_task = asyncio.create_task(ui_updater())
+            try:
+                if tasks:
+                    await asyncio.gather(*tasks)
+            finally:
+                updater_task.cancel()
 
     print("✅ Skrapning avslutades framgångsrikt.")
 
