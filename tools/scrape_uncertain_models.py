@@ -357,6 +357,9 @@ async def scrape_model_galleries(page, model_name, model_url, worker_idx=0):
                     cur.execute("UPDATE models SET completed = 1 WHERE name = ?", (model_name,))
                     db_conn.commit()
                     db_conn.close()
+                    if UI:
+                        UI.completed_models += 1
+                        UI.update_worker(worker_idx, "-", "Klar (Skippad)!")
                     return
             else:
                 if UI: UI.log(f"  [{model_name}] [VARNING] Hittade inget fält för kön. Fortsätter.")
@@ -588,7 +591,7 @@ async def main():
         }''')
         await page.close()
 
-        models_to_process = []
+        models_queue = asyncio.Queue()
         for name in flagged_names:
             if not name:
                 continue
@@ -603,22 +606,32 @@ async def main():
                 slug = lower_name.replace(" ", "-")
                 m_url = f"https://www.pornpics.com/pornstars/{slug}/"
 
-            models_to_process.append((name, m_url))
-            if len(models_to_process) >= args.persons_per_run:
-                break
+            models_queue.put_nowait((name, m_url))
         
         db_conn.close()
 
-        if not models_to_process:
+        if models_queue.empty():
             print("🚀 Inga nya modeller hittades att processa eller alla är markerade klara i databasen.")
             return
 
-        print(f"🔄 Bearbetar {len(models_to_process)} modeller med concurrency = {args.concurrency}")
+        target_count = min(args.persons_per_run, models_queue.qsize())
+        print(f"🔄 Bearbetar upp till {target_count} modeller (från {models_queue.qsize()} i kö) med concurrency = {args.concurrency}")
 
-        semaphore = asyncio.Semaphore(args.concurrency)
+        global UI
+        UI = ScraperUI(args.concurrency, target_count)
 
-        async def worker(n, u, idx):
-            async with semaphore:
+        async def worker(idx):
+            while True:
+                if UI and UI.completed_models >= target_count:
+                    UI.update_worker(idx, "-", "Uppnått mål!")
+                    break
+                
+                try:
+                    n, u = models_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    UI.update_worker(idx, "-", "Inga fler modeller!")
+                    break
+
                 delay = random.uniform(2, 6)
                 if UI: UI.update_worker(idx, n, f"Väntar {delay:.1f}s...")
                 await asyncio.sleep(delay)
@@ -642,11 +655,9 @@ async def main():
                 finally:
                     if cur_task:
                         cur_task.close()
+                    models_queue.task_done()
         
-        tasks = [worker(n, u, i % args.concurrency) for i, (n, u) in enumerate(models_to_process)]
-        
-        global UI
-        UI = ScraperUI(args.concurrency, len(models_to_process))
+        tasks = [worker(i) for i in range(args.concurrency)]
         
         with Live(UI.render(), refresh_per_second=4, screen=False) as live:
             # Uppdatera Live-objektet periodiskt
