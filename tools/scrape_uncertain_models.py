@@ -41,7 +41,7 @@ class ScraperUI:
         self.layout.split_column(
             Layout(name="header", size=3),
             Layout(name="body", ratio=1),
-            Layout(name="footer", size=10)
+            Layout(name="footer", size=22)
         )
         self.layout["body"].split_row(
             Layout(name="workers", ratio=1),
@@ -50,7 +50,7 @@ class ScraperUI:
 
     def log(self, message):
         self.logs.append(message)
-        if len(self.logs) > 15:
+        if len(self.logs) > 20:
             self.logs.pop(0)
 
     def update_worker(self, idx, model_name, status):
@@ -97,7 +97,8 @@ def init_db(db_path=None):
             name TEXT PRIMARY KEY,
             url TEXT,
             started INTEGER DEFAULT 0,
-            completed INTEGER DEFAULT 0
+            completed INTEGER DEFAULT 0,
+            failed_attempts INTEGER DEFAULT 0
         )
     ''')
     cur.execute('''
@@ -118,6 +119,10 @@ def init_db(db_path=None):
     ''')
     try:
         cur.execute("ALTER TABLE images ADD COLUMN gallery_url TEXT;")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cur.execute("ALTER TABLE models ADD COLUMN failed_attempts INTEGER DEFAULT 0;")
     except sqlite3.OperationalError:
         pass
         
@@ -370,6 +375,8 @@ async def scrape_model_galleries(page, model_name, model_url, worker_idx=0):
         await scroll_to_load_more(page, GALLERY_SELECTOR, 15, label=model_name)
     except Exception as e:
         if UI: UI.log(f"  [{model_name}] [FEL] Kunde inte ladda modellsida: {e}")
+        cur.execute("UPDATE models SET failed_attempts = failed_attempts + 1 WHERE name = ?", (model_name,))
+        db_conn.commit()
         db_conn.close()
         return
 
@@ -591,14 +598,16 @@ async def main():
         }''')
         await page.close()
 
-        models_queue = asyncio.Queue()
+        models_to_queue = []
         for name in flagged_names:
             if not name:
                 continue
-            cur.execute("SELECT completed FROM models WHERE name = ?", (name,))
+            cur.execute("SELECT completed, failed_attempts FROM models WHERE name = ?", (name,))
             row = cur.fetchone()
             if row and row[0] == 1:
                 continue # Redan behandlad
+
+            failed_attempts = row[1] if row else 0
 
             lower_name = name.lower()
             m_url = list_links.get(lower_name)
@@ -606,6 +615,11 @@ async def main():
                 slug = lower_name.replace(" ", "-")
                 m_url = f"https://www.pornpics.com/pornstars/{slug}/"
 
+            models_to_queue.append((failed_attempts, name, m_url))
+        
+        models_to_queue.sort(key=lambda x: x[0])
+        models_queue = asyncio.Queue()
+        for fa, name, m_url in models_to_queue:
             models_queue.put_nowait((name, m_url))
         
         db_conn.close()
