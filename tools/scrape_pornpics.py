@@ -82,13 +82,13 @@ import builtins
 def xprint(*args, **kwargs):
     msg = " ".join(str(a) for a in args)
     if UI is not None:
-        if "Laddar ner" in msg or "Letar gallerier på" in msg or "Öppnar galleri" in msg or "[SPARAD]" in msg or "Färdig med modell" in msg:
+        if "Laddar ner" in msg or "Letar gallerier på" in msg or "Öppnar galleri" in msg or "[SPARAD]" in msg or "Färdig med modell" in msg or "[SKIP]" in msg:
             # We can't update individual worker here since we don't have worker_idx.
             # But we can at least log everything to the footer instead of messing up the UI.
             UI.log(msg)
             if "[SPARAD]" in msg:
                 UI.total_images += 1
-            if "Färdig med modell" in msg:
+            if "Färdig med modell" in msg or "[SKIP] Kön verifierat" in msg:
                 UI.completed_models += 1
         else:
             UI.log(msg)
@@ -513,6 +513,17 @@ class PornPicsScraper:
         return flagged_names
 
 async def main():
+    import os
+    try:
+        total_cores = os.cpu_count()
+        if total_cores and total_cores > 2:
+            # Spara 2 kärnor till OS (ta bort de två sista kärnorna från affinity)
+            allowed_cores = set(range(total_cores - 2))
+            os.sched_setaffinity(0, allowed_cores)
+            print(f"⚙️ CPU-Affinity satt till {len(allowed_cores)}/{total_cores} kärnor (sparar 2 till OS).")
+    except Exception:
+        pass
+
     parser = argparse.ArgumentParser(description="Unified PornPics Scraper")
     parser.add_argument("--mode", choices=["tag", "report", "manual"], default="report", help="Scraping mode")
     parser.add_argument("--url", help="Start URL or alias (innie, pussy, closeup)")

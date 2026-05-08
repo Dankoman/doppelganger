@@ -485,6 +485,16 @@ async def scrape_model_galleries(page, model_name, model_url, worker_idx=0):
 
 
 async def main():
+    import os
+    try:
+        total_cores = os.cpu_count()
+        if total_cores and total_cores > 2:
+            allowed_cores = set(range(total_cores - 2))
+            os.sched_setaffinity(0, allowed_cores)
+            print(f"⚙️ CPU-Affinity satt till {len(allowed_cores)}/{total_cores} kärnor (sparar 2 till OS).")
+    except Exception:
+        pass
+
     global MAX_IMAGES_PER_MODEL
     parser = argparse.ArgumentParser(description="Scrape poorly trained models from PornPics")
     parser.add_argument("--persons-per-run", type=int, default=20, help="Number of models to scrape")
