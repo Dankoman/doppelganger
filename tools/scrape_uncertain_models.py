@@ -88,7 +88,7 @@ UI = None
 
 def init_db(db_path=None):
     if db_path is None:
-        db_path = Path(__file__).parent.parent / "data" / "uncertain_scraper_state.db"
+        db_path = Path(__file__).parent.parent / "data" / "ppic_scraper_state.db"
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     cur.execute("PRAGMA journal_mode=WAL;")
@@ -136,24 +136,42 @@ async def safe_goto(page, url, wait_for_selector=None, timeout=60000, retries=2,
         try:
             goto_success = False
             try:
-                # Vi försöker ladda sidan. Ofta timear detta ut pga externa skript som hänger sig.
-                await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+                # Använd 'commit' (när servern skickat headers) för att undvika att hänga på sega externa skript.
+                response = await page.goto(url, wait_until="commit", timeout=timeout)
+                if response and response.status == 404:
+                    raise Exception("404 Not Found")
                 goto_success = True
             except Exception as goto_err:
                 if "Timeout" in str(goto_err) and wait_for_selector:
-                    if UI: UI.log(f"  [{label}] Sidladdning timeade ut, men vi kollar om galleriet laddat ändå...")
+                    if UI: UI.log(f"  [{label}] Sidladdning (commit) timeade ut, men vi kollar om galleriet laddat ändå...")
+                    # Försök stoppa laddningen så vi kan fortsätta med det som hunnit laddas
+                    try:
+                        await page.evaluate("window.stop()")
+                    except:
+                        pass
                 else:
                     raise goto_err
             
             if wait_for_selector:
-                # Vi väntar på elementet. Även om goto timeade ut, kan elementet finnas där.
-                await page.wait_for_selector(wait_for_selector, timeout=15000, state="attached")
+                # Vi väntar på elementet. Nu med lite mer generös timeout (30s) då vi vet att sidan kan vara seg.
+                try:
+                    await page.wait_for_selector(wait_for_selector, timeout=30000, state="attached")
+                except Exception as e:
+                    # Om vi misslyckas efter commit-timeout, prova window.stop() en gång till och kolla igen
+                    try:
+                        await page.evaluate("window.stop()")
+                    except:
+                        pass
+                    # En sista chans att hitta den ifall den precis dök upp
+                    await page.wait_for_selector(wait_for_selector, timeout=5000, state="attached")
             elif not goto_success:
                 raise Exception(f"Timeout vid laddning av {url}")
                 
             return True
         except Exception as e:
             err_str = str(e)
+            if "404 Not Found" in err_str:
+                raise e
             if "Timeout" in err_str:
                 phase = "väntan på selector" if "wait_for_selector" in err_str else "navigering"
                 msg = f"Timeout under {phase}"
@@ -176,12 +194,13 @@ async def safe_goto(page, url, wait_for_selector=None, timeout=60000, retries=2,
 async def setup_resource_blocking(context):
     async def handle_route(route):
         req = route.request
-        # Blockera kända annonsdomäner och trackers som segar ner laddningen
+        # Blockera kända annonsdomäner, trackers och tunga resurser som segar ner laddningen
         if any(x in req.url for x in [
             "google-analytics", "doubleclick", "googletagmanager", "yandex.ru", 
             "adnxs", "popads", "onclickads", "tsyndicate.com", "realsrv.com",
-            "trafficstars.com", "exoclick.com", "juicyads.com"
-        ]):
+            "trafficstars.com", "exoclick.com", "juicyads.com", "m32.media",
+            "hpacdn.pornpics.com/renderer", "rtmark.net", "vlyby.com"
+        ]) or req.resource_type in ["image", "font", "media"]:
             return await route.abort()
         await route.continue_()
     
@@ -375,7 +394,10 @@ async def scrape_model_galleries(page, model_name, model_url, worker_idx=0):
         await scroll_to_load_more(page, GALLERY_SELECTOR, 15, label=model_name)
     except Exception as e:
         if UI: UI.log(f"  [{model_name}] [FEL] Kunde inte ladda modellsida: {e}")
-        cur.execute("UPDATE models SET failed_attempts = failed_attempts + 1 WHERE name = ?", (model_name,))
+        if "404 Not Found" in str(e):
+            cur.execute("UPDATE models SET failed_attempts = failed_attempts + 10 WHERE name = ?", (model_name,))
+        else:
+            cur.execute("UPDATE models SET failed_attempts = failed_attempts + 1 WHERE name = ?", (model_name,))
         db_conn.commit()
         db_conn.close()
         return
@@ -618,6 +640,10 @@ async def main():
                 continue # Redan behandlad
 
             failed_attempts = row[1] if row else 0
+
+            if failed_attempts >= 3:
+                print(f"  [SKIP] Hoppar över {name} då den misslyckats {failed_attempts} gånger tidigare.")
+                continue
 
             lower_name = name.lower()
             m_url = list_links.get(lower_name)

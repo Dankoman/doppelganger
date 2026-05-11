@@ -77,7 +77,7 @@ def get_flagged_models(min_samples=15):
 
 def init_db(db_path=None):
     if db_path is None:
-        db_path = Path(__file__).parent.parent / "data" / "scraper_state.db"
+        db_path = Path(__file__).parent.parent / "data" / "ppic_scraper_state.db"
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     cur.execute("PRAGMA journal_mode=WAL;")  # Förbättrad prestanda vid parallell körning
