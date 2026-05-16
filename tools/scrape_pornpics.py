@@ -111,12 +111,13 @@ TAG_ALIASES = {
 }
 
 class PornPicsScraper:
-    def __init__(self, output_dir, db_path, concurrency=3, images_per_person=50, library_dir=None):
+    def __init__(self, output_dir, db_path, concurrency=3, images_per_person=50, library_dir=None, scorched_earth=False):
         self.output_dir = Path(output_dir)
         self.db_path = Path(db_path)
         self.library_dir = Path(library_dir) if library_dir else None
         self.concurrency = concurrency
         self.images_per_person = images_per_person
+        self.scorched_earth = scorched_earth
         self.resolver = IdentityResolver(
             FACE_EXTRACTOR_DIR / "merge.txt",
             FACE_EXTRACTOR_DIR / "similar_exclusions.txt"
@@ -329,10 +330,10 @@ class PornPicsScraper:
                             else:
                                 male_count += 1
                         
-                        if female_count > 1:
-                            return "abort"
                         if male_count > 0:
                             return "reject"
+                        if female_count > 1:
+                            return "abort" if self.scorched_earth else "save"
                         
                         return "save"
             except (aiohttp.ClientConnectorError, asyncio.TimeoutError, aiohttp.ServerDisconnectedError):
@@ -497,7 +498,6 @@ class PornPicsScraper:
                 if filename not in best_images or (is_highres and "/460/" in best_images[filename]):
                     best_images[filename] = u
             for i_url in best_images.values():
-                if get_local_image_count() >= self.images_per_person: break
                 target_url = i_url
                 if "/460/" in target_url: target_url = target_url.replace("/460/", "/1280/")
                 status = await self.download_image(page, target_url, model_name, g_url)
@@ -572,6 +572,7 @@ async def main():
     parser.add_argument("--images-per-person", type=int, default=50, help="Max images per person")
     parser.add_argument("--persons-per-run", type=int, default=20, help="Max persons to process")
     parser.add_argument("--wipe-db", action="store_true", help="Clear state DB")
+    parser.add_argument("--scorched-earth", action="store_true", help="Abort and wipe gallery if multiple females are detected in an image")
     args = parser.parse_args()
 
     # Bestäm output-mapp
@@ -581,7 +582,15 @@ async def main():
     
     library_dir = Path(args.library)
 
-    scraper = PornPicsScraper(output_dir, DEFAULT_DB_PATH, args.concurrency, args.images_per_person, library_dir=library_dir)
+    scraper = PornPicsScraper(
+        output_dir, 
+        DEFAULT_DB_PATH, 
+        args.concurrency, 
+        args.images_per_person, 
+        library_dir=library_dir,
+        scorched_earth=args.scorched_earth
+    )
+
     
     if args.wipe_db:
         print("🧹 Rensar databasen...")
