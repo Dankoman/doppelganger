@@ -20,6 +20,8 @@ from rich.text import Text
 from rich.align import Align
 
 MAX_IMAGES_PER_MODEL = 50
+SCORCHED_EARTH = False
+RE_SCRAPE = False
 API_ENDPOINT = "http://127.0.0.1:5000/recognize"
 OUTPUT_DIR = Path("/home/marqs/Bilder/Nya")
 FACE_EXTRACTOR_DIR = Path(__file__).parent.parent.parent / "face_extractor"
@@ -273,7 +275,7 @@ async def validate_image(image_bytes: bytes) -> str:
                             male_count += 1
                     
                     if female_count > 1:
-                        return "abort"
+                        return "abort" if SCORCHED_EARTH else "save"
                     if male_count > 0:
                         return "reject"
                     
@@ -469,9 +471,6 @@ async def scrape_model_galleries(page, model_name, model_url, worker_idx=0):
                 best_images[filename] = u
 
         for i_url in best_images.values():
-            if get_local_image_count() >= MAX_IMAGES_PER_MODEL:
-                break
-            
             target_url = i_url
             if "/460/" in target_url:
                 target_url = target_url.replace("/460/", "/1280/")
@@ -524,9 +523,14 @@ async def main():
     parser.add_argument("--concurrency", type=int, default=3, help="Concurrent models to scrape")
     parser.add_argument("--min-samples", type=int, default=5, help="Hoppa över personer som redan har minst detta antal lyckade bilder (om ej 'blandade')")
     parser.add_argument("--wipe-db", action="store_true", help="Rensa databasen innan körning")
+    parser.add_argument("--scorched-earth", action="store_true", help="Abort and wipe gallery if multiple females are detected in an image")
+    parser.add_argument("--re-scrape", action="store_true", help="Reset gallery and model status in DB for selected models to force a full re-scrape")
     args = parser.parse_args()
 
     MAX_IMAGES_PER_MODEL = args.images_per_person
+    global SCORCHED_EARTH, RE_SCRAPE
+    SCORCHED_EARTH = args.scorched_earth
+    RE_SCRAPE = args.re_scrape
 
     db_conn = init_db()
     cur = db_conn.cursor()
@@ -580,10 +584,10 @@ async def main():
                 name_a = row.get("Person A")
                 if name_a:
                     samples_a = int(row.get("Samples A", "0") or "0")
-                    if samples_a >= args.min_samples and not is_mixed_a and not is_confusion:
+                    if (samples_a >= args.min_samples and not is_mixed_a and not is_confusion) or (is_mixed_a and not is_confusion):
                         skipped_count += 1
                     else:
-                        if is_mixed_a or is_confusion:
+                        if is_confusion:
                             flagged_critical.append(name_a)
                         else:
                             flagged_normal.append(name_a)
@@ -591,11 +595,10 @@ async def main():
                 # Filtrera Person B (om den finns och inte redan är hanterad som A)
                 if name_b:
                     samples_b = int(row.get("Samples B", "0") or "0")
-                    if samples_b >= args.min_samples and not is_mixed_b and not is_confusion:
-                        # Hoppa över om den har nog med samples och inte är i behov av kritisk fix
+                    if (samples_b >= args.min_samples and not is_mixed_b and not is_confusion) or (is_mixed_b and not is_confusion):
                         pass
                     else:
-                        if is_mixed_b or is_confusion:
+                        if is_confusion:
                             flagged_critical.append(name_b)
                         else:
                             flagged_normal.append(name_b)
@@ -636,19 +639,24 @@ async def main():
                 continue
             cur.execute("SELECT completed, failed_attempts FROM models WHERE name = ?", (name,))
             row = cur.fetchone()
-            if row and row[0] == 1:
+            if row and row[0] == 1 and not RE_SCRAPE:
                 continue # Redan behandlad
 
             failed_attempts = row[1] if row else 0
 
-            if failed_attempts >= 3:
+            if failed_attempts >= 3 and not RE_SCRAPE:
                 print(f"  [SKIP] Hoppar över {name} då den misslyckats {failed_attempts} gånger tidigare.")
                 continue
 
             lower_name = name.lower()
-            m_url = list_links.get(lower_name)
+            
+            # Strippa bort eventuella alias-suffix (ex: "_1") för att hitta modellen på PornPics
+            import re
+            search_name = re.sub(r'_\d+$', '', lower_name)
+            
+            m_url = list_links.get(search_name)
             if not m_url:
-                slug = lower_name.replace(" ", "-")
+                slug = search_name.replace(" ", "-")
                 m_url = f"https://www.pornpics.com/pornstars/{slug}/"
 
             models_to_queue.append((failed_attempts, name, m_url))
@@ -656,8 +664,15 @@ async def main():
         models_to_queue.sort(key=lambda x: x[0])
         models_queue = asyncio.Queue()
         for fa, name, m_url in models_to_queue:
+            if RE_SCRAPE:
+                cur.execute("UPDATE models SET completed = 0, started = 0 WHERE name = ?", (name,))
+                cur.execute("UPDATE galleries SET processed = 0 WHERE model_name = ?", (name,))
+                db_conn.commit()
             models_queue.put_nowait((name, m_url))
         
+        if RE_SCRAPE and models_to_queue:
+            print(f"🔄 Återställde databasstatus för {len(models_to_queue)} osäkra modeller (--re-scrape).")
+
         db_conn.close()
 
         if models_queue.empty():

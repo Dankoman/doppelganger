@@ -167,7 +167,10 @@ class PornPicsScraper:
     def get_db(self):
         return sqlite3.connect(self.db_path)
 
-    def is_model_done(self, name, canonical):
+    def is_model_done(self, name, canonical, force_rescrape=False):
+        if force_rescrape:
+            return False
+
         # 1. Kolla disk
         if (self.output_dir / canonical).exists():
             return True
@@ -573,6 +576,7 @@ async def main():
     parser.add_argument("--persons-per-run", type=int, default=20, help="Max persons to process")
     parser.add_argument("--wipe-db", action="store_true", help="Clear state DB")
     parser.add_argument("--scorched-earth", action="store_true", help="Abort and wipe gallery if multiple females are detected in an image")
+    parser.add_argument("--re-scrape", action="store_true", help="Reset gallery and model status in DB for selected models to force a full re-scrape")
     args = parser.parse_args()
 
     # Bestäm output-mapp
@@ -630,7 +634,7 @@ async def main():
                 canonical = item["canonical"]
                 
                 # Hoppa över om redan hanterad (disk eller DB)
-                if scraper.is_model_done(name, canonical):
+                if scraper.is_model_done(name, canonical, force_rescrape=args.re_scrape):
                     continue
                 
                 m_url = list_links.get(name.lower())
@@ -672,7 +676,7 @@ async def main():
                 canonical = decision["canonical"]
                 
                 # Kolla om redan hanterad
-                if scraper.is_model_done(name, canonical):
+                if scraper.is_model_done(name, canonical, force_rescrape=args.re_scrape):
                     print(f"    [SKIP] {name} -> {canonical} är redan hanterad.")
                     continue
 
@@ -717,7 +721,7 @@ async def main():
                                 canonical = decision["canonical"]
                                 
                                 # Kolla om mappen finns i output, huvudbibliotek eller är markerad som klar i DB
-                                if not scraper.is_model_done(m_name, canonical):
+                                if not scraper.is_model_done(m_name, canonical, force_rescrape=args.re_scrape):
                                     models_to_process.append((m_name, urljoin(start_url, m_href), canonical))
                                     print(f"    [FUNNEN] {m_name} -> {canonical} (NY) ({len(models_to_process)}/{args.persons_per_run})")
                                 if len(models_to_process) >= args.persons_per_run: break
@@ -745,6 +749,16 @@ async def main():
         
         models_with_fa.sort(key=lambda x: x[0])
         models_to_process = [(n, u, c) for fa, n, u, c in models_with_fa]
+
+        if args.re_scrape:
+            db = scraper.get_db()
+            cur = db.cursor()
+            for n, u, c in models_to_process:
+                cur.execute("UPDATE models SET completed = 0, started = 0 WHERE name = ? OR name = ?", (n, c))
+                cur.execute("UPDATE galleries SET processed = 0 WHERE model_name = ? OR model_name = ?", (n, c))
+            db.commit()
+            db.close()
+            print(f"🔄 Återställde databasstatus för {len(models_to_process)} utvalda modeller (--re-scrape).")
 
         print(f"🔄 Bearbetar {len(models_to_process)} modeller med concurrency={args.concurrency}")
         
